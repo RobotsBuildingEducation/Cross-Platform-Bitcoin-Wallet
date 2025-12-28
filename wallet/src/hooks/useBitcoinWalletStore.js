@@ -1,29 +1,118 @@
-// src/hooks/useBitcoinWalletStore.js
-// NIP-60 (Cashu Wallets) and NIP-61 (Nutzaps) implementation
-// Zustand store for global wallet state
+/**
+ * useBitcoinWalletStore.js
+ *
+ * A Zustand store implementing NIP-60 (Cashu Wallets) and NIP-61 (Nutzaps)
+ * for Bitcoin Lightning payments via the Cashu ecash protocol.
+ *
+ * === PROTOCOL OVERVIEW ===
+ *
+ * Cashu is an ecash protocol that provides:
+ * - Privacy: Transactions are unlinkable (the mint cannot track spending)
+ * - Speed: Instant settlement without on-chain confirmations
+ * - Low fees: Minimal transaction costs compared to on-chain Bitcoin
+ *
+ * === KEY CONCEPTS ===
+ *
+ * Proofs:
+ *   Proofs are cryptographic tokens representing value. Each proof contains:
+ *   - amount: The satoshi value of this proof
+ *   - secret: A unique identifier that prevents double-spending
+ *   - C: A blinded signature from the mint proving authenticity
+ *   When you "spend" a proof, the mint marks the secret as used.
+ *   Proofs are atomic - a 10 sat proof cannot be partially spent.
+ *
+ * Mints:
+ *   Mints are trusted servers that issue and redeem proofs. They:
+ *   - Accept Lightning payments and issue proofs in return
+ *   - Verify proofs haven't been spent and allow transfers
+ *   - Redeem proofs by paying Lightning invoices
+ *   Users must trust their mint not to steal funds or go offline.
+ *
+ * NIP-60 (Cashu Wallet):
+ *   Stores wallet state (proofs, mints) as encrypted Nostr events.
+ *   Kind 37513: Wallet metadata and configuration
+ *   Kind 7374/7375: Token and proof storage events
+ *
+ * NIP-61 (Nutzaps):
+ *   Enables sending ecash via Nostr events:
+ *   Kind 9321: Nutzap event containing proofs locked to recipient
+ *   Kind 10019: User's payment preferences (mints, relays, pubkey)
+ *
+ * P2PK (Pay-to-Public-Key):
+ *   Proofs can be locked to a specific public key, meaning only the
+ *   holder of the corresponding private key can redeem them.
+ *
+ * === TRANSACTION FLOW ===
+ *
+ * Deposit (Lightning -> Ecash):
+ *   1. Request invoice from mint for X sats
+ *   2. Pay the Lightning invoice
+ *   3. Mint issues proofs worth X sats
+ *   4. Store proofs in wallet (published to Nostr relays)
+ *
+ * Send (Nutzap):
+ *   1. Select proofs totaling the send amount
+ *   2. "Split" proofs with mint: original proofs -> send proofs + change proofs
+ *   3. Lock send proofs to recipient's public key (P2PK)
+ *   4. Publish nutzap event (kind 9321) with locked proofs
+ *   5. Store change proofs, mark original proofs as spent
+ *
+ * Receive:
+ *   1. Find nutzap events addressed to our pubkey
+ *   2. Claim proofs from the mint (swap for fresh proofs)
+ *   3. Store new proofs in wallet
+ */
+
 import { create } from "zustand";
 import NDK, { NDKPrivateKeySigner, NDKEvent } from "@nostr-dev-kit/ndk";
 import { NDKCashuWallet } from "@nostr-dev-kit/ndk-wallet";
 import { Buffer } from "buffer";
 import { bech32 } from "bech32";
 
-// Polyfill Buffer for browser
+// Polyfill Buffer for browser environments (Node.js Buffer API)
 if (typeof window !== "undefined") {
   window.Buffer = Buffer;
 }
 
-// Default configuration
+/**
+ * Default Cashu mint URL
+ * Minibits is a well-known, reliable mint for testing and small amounts.
+ * In production, users should be able to choose their own trusted mints.
+ */
 const DEFAULT_MINT = "https://mint.minibits.cash/Bitcoin";
+
+/**
+ * Default Nostr relays for publishing and fetching wallet events.
+ * Multiple relays provide redundancy and better message propagation.
+ */
 const DEFAULT_RELAYS = [
   "wss://relay.damus.io",
   "wss://relay.primal.net",
   "wss://nos.lol",
 ];
+
+/**
+ * Default payment recipient (used for testing/donations)
+ * This is the npub of the Robots Building Education project.
+ */
 const DEFAULT_RECEIVER =
   "npub14vskcp90k6gwp6sxjs2jwwqpcmahg6wz3h5vzq0yn6crrsq0utts52axlt";
 
 /**
- * Safely extract total balance from wallet.balance response
+ * Safely Extract Balance Value
+ *
+ * The wallet.balance property can return different types depending on
+ * the wallet state and library version. This normalizes all formats
+ * to a simple number.
+ *
+ * Possible input formats:
+ * - null/undefined: Wallet not initialized -> 0
+ * - number: Direct balance value -> return as-is
+ * - { amount: number }: Object with amount property -> extract amount
+ * - string: Stringified number -> parse to number
+ *
+ * @param {*} bal - The balance value in any format
+ * @returns {number} The normalized balance in satoshis
  */
 function extractBalance(bal) {
   if (bal === null || bal === undefined) return 0;
@@ -36,7 +125,18 @@ function extractBalance(bal) {
 }
 
 /**
- * Decode bech32 key (npub/nsec) to hex
+ * Decode Bech32 Key to Hexadecimal
+ *
+ * Converts human-readable Nostr keys (npub/nsec) to raw hex format
+ * required by cryptographic operations.
+ *
+ * Bech32 encoding provides:
+ * - Human-readable prefix (npub/nsec) identifying key type
+ * - Checksum for error detection
+ * - Case-insensitive characters avoiding confusion (no 1/l, 0/O)
+ *
+ * @param {string} key - Bech32 encoded key (npub1... or nsec1...)
+ * @returns {string|null} Hex encoded key or null on error
  */
 function decodeKey(key) {
   try {
@@ -49,7 +149,28 @@ function decodeKey(key) {
 }
 
 /**
- * Verify proofs with mint and return only unspent balance
+ * Verify Proof States with Mint
+ *
+ * Queries the mint to check which proofs are still spendable.
+ * This is crucial because:
+ *
+ * 1. Proofs might be spent elsewhere (multi-device sync issues)
+ * 2. Proofs might have been claimed by recipients
+ * 3. Local state might be out of sync with mint
+ *
+ * Proof States (from Cashu NUT-07):
+ * - UNSPENT: Proof is valid and can be spent
+ * - SPENT: Proof has already been redeemed
+ * - PENDING: Proof is in a pending transaction
+ *
+ * Why verify with mint?
+ * The mint is the source of truth for proof validity. Local storage
+ * might contain stale proofs that have been spent from another device
+ * or session. Always verify before displaying balance or spending.
+ *
+ * @param {NDKCashuWallet} wallet - The wallet instance
+ * @param {string} mintUrl - URL of the mint to verify against
+ * @returns {number} Sum of unspent proof amounts in satoshis
  */
 async function verifyBalanceWithMint(wallet, mintUrl) {
   try {
@@ -78,28 +199,67 @@ async function verifyBalanceWithMint(wallet, mintUrl) {
 }
 
 export const useBitcoinWalletStore = create((set, get) => ({
-  // State
-  isConnected: false,
-  errorMessage: null,
-  nostrPubKey: "",
-  nostrPrivKey: "",
-  ndkInstance: null,
-  signer: null,
-  cashuWallet: null,
-  walletBalance: 0,
-  proofs: [],
-  invoice: "",
-  isCreatingWallet: false,
-  isWalletReady: false,
+  // ============================================================
+  // STATE
+  // ============================================================
+  // Connection and identity state
+  isConnected: false, // Whether connected to Nostr relays
+  errorMessage: null, // Last error message for UI display
+  nostrPubKey: "", // User's public key (npub format)
+  nostrPrivKey: "", // User's private key (nsec format) - stored for session
 
-  // Setters
+  // NDK instances
+  ndkInstance: null, // Active NDK connection to relays
+  signer: null, // NDKPrivateKeySigner for signing events
+
+  // Wallet state
+  cashuWallet: null, // NDKCashuWallet instance
+  walletBalance: 0, // Current balance in satoshis (verified with mint)
+  proofs: [], // Local cache of proofs (source of truth is mint)
+  invoice: "", // Current Lightning invoice for deposits
+  isCreatingWallet: false, // Loading state during wallet creation
+  isWalletReady: false, // Whether wallet is initialized and ready
+
+  // ============================================================
+  // BASIC SETTERS
+  // ============================================================
+
+  /**
+   * Set error message for display in UI
+   * @param {string} msg - Error message
+   */
   setError: (msg) => set({ errorMessage: msg }),
+
+  /**
+   * Set the current Lightning invoice (for QR display)
+   * @param {string} data - Lightning invoice (BOLT11 format)
+   */
   setInvoice: (data) => set({ invoice: data }),
 
-  // Utility: Get hex pubkey from npub
+  // ============================================================
+  // UTILITY FUNCTIONS
+  // ============================================================
+
+  /**
+   * Convert npub to hex format
+   * Utility wrapper around decodeKey for convenience.
+   *
+   * @param {string} npub - Public key in bech32 format
+   * @returns {string|null} Hex encoded public key
+   */
   getHexNPub: (npub) => decodeKey(npub),
 
-  // Verify and update balance from mint
+  /**
+   * Verify Balance with Mint and Update State
+   *
+   * Fetches the current proof states from the mint and calculates
+   * the true spendable balance. This should be called:
+   * - After any transaction (send/receive)
+   * - When the wallet is loaded
+   * - Periodically to catch external changes
+   *
+   * @returns {number} The verified balance in satoshis
+   */
   verifyAndUpdateBalance: async () => {
     const { cashuWallet } = get();
     if (!cashuWallet) return 0;
@@ -109,7 +269,30 @@ export const useBitcoinWalletStore = create((set, get) => ({
     return balance;
   },
 
-  // Connect to Nostr relays
+  // ============================================================
+  // CONNECTION FUNCTIONS
+  // ============================================================
+
+  /**
+   * Connect to Nostr Relay Network
+   *
+   * Establishes WebSocket connections to Nostr relays and initializes
+   * the signer for authenticated operations.
+   *
+   * This is required before:
+   * - Loading wallet data from relays
+   * - Publishing transactions
+   * - Fetching recipient payment info
+   *
+   * Key Resolution (falls back through each):
+   * 1. Explicitly passed nsecRef parameter
+   * 2. Stored nsec from localStorage
+   * 3. nsec from current state
+   *
+   * @param {string|null} npubRef - Optional public key (currently unused)
+   * @param {string|null} nsecRef - Optional private key to use
+   * @returns {Object|null} { ndkInstance, signer } or null on failure
+   */
   connectToNostr: async (npubRef = null, nsecRef = null) => {
     const { setError, nostrPrivKey } = get();
 
@@ -147,7 +330,23 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
   },
 
-  // Initialize (called on app load)
+  // ============================================================
+  // INITIALIZATION FUNCTIONS
+  // ============================================================
+
+  /**
+   * Initialize Store from Persisted State
+   *
+   * Called on app startup to restore the user's session.
+   * Attempts to reconnect to Nostr if credentials exist.
+   *
+   * Flow:
+   * 1. Load keys from localStorage
+   * 2. Update React state with loaded keys
+   * 3. Attempt to connect to Nostr relays
+   *
+   * @returns {boolean} True if successfully connected, false otherwise
+   */
   init: async () => {
     const storedNpub = localStorage.getItem("local_npub");
     const storedNsec = localStorage.getItem("local_nsec");
@@ -165,7 +364,28 @@ export const useBitcoinWalletStore = create((set, get) => ({
     return false;
   },
 
-  // Initialize wallet (load existing only - does NOT create new)
+  /**
+   * Initialize Wallet (Load Existing Only)
+   *
+   * Attempts to load an existing wallet from Nostr relays.
+   * Does NOT create a new wallet if none exists.
+   *
+   * NIP-60 Wallet Discovery:
+   * Searches for wallet-related events published by the user:
+   * - Kind 37513: Wallet metadata (replaceable event)
+   * - Kind 7374: Token events (encrypted proofs)
+   * - Kind 7375: Proof events (individual proof storage)
+   *
+   * If events are found, the wallet is reconstructed from relay data.
+   * This enables multi-device sync - your wallet follows your keys.
+   *
+   * Event Listeners:
+   * - "balance_updated": Fires when proofs change
+   * - "ready": Fires when wallet is fully loaded
+   * - "warning": Non-fatal issues (relay errors, etc.)
+   *
+   * @returns {NDKCashuWallet|null} The loaded wallet or null if not found
+   */
   initWallet: async () => {
     const {
       ndkInstance,
@@ -175,6 +395,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       verifyAndUpdateBalance,
     } = get();
 
+    // Clean up existing wallet listeners to prevent memory leaks
     if (cashuWallet) {
       cashuWallet.removeAllListeners();
     }
@@ -189,6 +410,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       console.log("[Wallet] Looking for wallet for pubkey:", user.pubkey);
 
       // Check for wallet events - try multiple possible kinds
+      // These are NIP-60 defined event kinds for Cashu wallets
       const walletEvents = await ndkInstance.fetchEvents({
         kinds: [37513, 7374, 7375], // wallet, token, and proof kinds
         authors: [user.pubkey],
@@ -210,6 +432,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
       wallet.mints = [DEFAULT_MINT];
       wallet.walletId = "Robots Building Education Wallet";
 
+      // Attach the private key for decrypting stored proofs
+      // Proofs are encrypted before being stored on relays
       if (pk) {
         wallet.privkey = pk;
         wallet.signer = new NDKPrivateKeySigner(pk);
@@ -217,10 +441,13 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       ndkInstance.wallet = wallet;
 
+      // Start the wallet - this fetches and decrypts stored proofs
       await wallet.start({ pubkey: user.pubkey });
 
       console.log("[Wallet] Wallet status:", wallet.status);
       console.log("[Wallet] Wallet relaySet:", wallet.relaySet);
+
+      // Listen for balance changes from the wallet
       wallet.on("balance_updated", (balance) => {
         console.log("[Wallet] >>> BALANCE EVENT FIRED:", balance);
         console.log("[Wallet] Balance updated event:", balance);
@@ -244,6 +471,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       set({ cashuWallet: wallet, isWalletReady: true });
 
+      // Verify balance with mint (proofs might have been spent elsewhere)
       await verifyAndUpdateBalance();
 
       return wallet;
@@ -254,7 +482,32 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
   },
 
-  // Create and publish new wallet
+  // ============================================================
+  // WALLET MANAGEMENT FUNCTIONS
+  // ============================================================
+
+  /**
+   * Create and Publish New Wallet
+   *
+   * Creates a fresh NIP-60 wallet and publishes it to Nostr relays.
+   * Should only be called when initWallet() returns null (no existing wallet).
+   *
+   * Wallet Creation Process:
+   * 1. Create NDKCashuWallet instance
+   * 2. Configure with user's private key and default mint
+   * 3. Start the wallet (initializes internal state)
+   * 4. Publish wallet metadata to relays (kind 37513)
+   *
+   * Publishing to relays enables:
+   * - Multi-device access (wallet follows your keys)
+   * - Backup (proofs stored encrypted on public relays)
+   * - Recovery (can restore wallet with just the nsec)
+   *
+   * Note: Publishing might fail due to relay issues but the wallet
+   * still works locally. Publishing is retried on subsequent operations.
+   *
+   * @returns {NDKCashuWallet|null} The created wallet or null on error
+   */
   createNewWallet: async () => {
     const { ndkInstance, signer, setError, verifyAndUpdateBalance } = get();
 
@@ -280,6 +533,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
       await wallet.start({ pubkey: user.pubkey });
       console.log("[Wallet] Wallet started");
 
+      // Attempt to publish wallet to relays for multi-device sync
+      // Non-critical: wallet works locally even if publish fails
       try {
         await wallet.publish();
         console.log("[Wallet] Wallet published to relays");
@@ -304,7 +559,31 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
   },
 
-  // Fetch recipient's payment info (kind:10019)
+  /**
+   * Fetch Recipient's Payment Preferences (NIP-61)
+   *
+   * Retrieves a user's preferred payment configuration from their
+   * kind 10019 event (NIP-61 Nutzap Preferences).
+   *
+   * NIP-61 Kind 10019 Event Structure:
+   * - "mint" tags: Mints the user accepts payments from
+   * - "relay" tags: Relays to publish nutzaps to
+   * - "pubkey" tag: Public key for P2PK locking (optional)
+   *
+   * Why this matters:
+   * - Users may only trust certain mints
+   * - P2PK locking ensures only the recipient can claim funds
+   * - Publishing to recipient's relays ensures they see the payment
+   *
+   * Fallback Behavior:
+   * If no preferences are found, uses:
+   * - Default mint for ecash tokens
+   * - Recipient's npub as P2PK pubkey
+   * - Empty relay list (uses sender's default relays)
+   *
+   * @param {string} recipientNpub - Recipient's public key in bech32 format
+   * @returns {Object} { mints, p2pkPubkey, relays }
+   */
   fetchUserPaymentInfo: async (recipientNpub) => {
     const { ndkInstance } = get();
 
@@ -336,6 +615,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       let relays = [];
       let p2pkPubkey = null;
 
+      // Parse NIP-61 tags from the event
       for (const tag of userEvent.tags) {
         const [t, v1] = tag;
         if (t === "mint" && v1) mints.push(v1);
@@ -353,7 +633,38 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
   },
 
-  // Deposit sats
+  // ============================================================
+  // TRANSACTION FUNCTIONS
+  // ============================================================
+
+  /**
+   * Initiate a Deposit (Lightning -> Ecash)
+   *
+   * Creates a Lightning invoice that, when paid, mints new ecash proofs.
+   * This is how users add funds to their Cashu wallet.
+   *
+   * Deposit Flow:
+   * 1. Request invoice from mint for specified amount
+   * 2. Return invoice for display (QR code / copy-paste)
+   * 3. User pays invoice with any Lightning wallet
+   * 4. Mint detects payment and issues proofs
+   * 5. Proofs are saved to wallet state (and synced to relays)
+   *
+   * The deposit object is an event emitter:
+   * - "success": Payment received, proofs minted
+   * - "error": Payment failed or timed out
+   *
+   * Invoice Format (BOLT11):
+   * Lightning invoices start with "lnbc" and contain:
+   * - Amount in millisatoshis
+   * - Payment hash (unique identifier)
+   * - Expiry time
+   * - Destination node
+   *
+   * @param {number} amountInSats - Amount to deposit in satoshis (default: 10)
+   * @param {Object} options - Optional callbacks { onSuccess, onError }
+   * @returns {string|null} BOLT11 invoice string or null on error
+   */
   initiateDeposit: async (amountInSats = 10, options = {}) => {
     const { cashuWallet, setError, setInvoice, verifyAndUpdateBalance } = get();
     const { onSuccess, onError } = options;
@@ -366,16 +677,17 @@ export const useBitcoinWalletStore = create((set, get) => ({
     try {
       const deposit = cashuWallet.deposit(amountInSats, DEFAULT_MINT);
 
+      // Handle successful payment - proofs are minted
       deposit.on("success", async (token) => {
         console.log("[Wallet] Deposit successful!", token.proofs);
 
-        // Save proofs to relay
+        // Save proofs to relay for backup and multi-device sync
         await cashuWallet.state.update({
           store: token.proofs,
           mint: DEFAULT_MINT,
         });
 
-        // Verify balance with mint
+        // Verify balance with mint to get accurate count
         const newBalance = await verifyAndUpdateBalance();
         set({ invoice: "" });
 
@@ -384,6 +696,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
         }
       });
 
+      // Handle payment failure or timeout
       deposit.on("error", (e) => {
         console.error("[Wallet] Deposit error:", e);
         setError(e.message || "Deposit failed");
@@ -393,6 +706,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
         }
       });
 
+      // Start the deposit - returns the Lightning invoice
       const pr = await deposit.start();
       console.log("[Wallet] Invoice created");
       setInvoice(pr);
@@ -404,7 +718,58 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
   },
 
-  // Send 1 sat via nutzap
+  /**
+   * Send 1 Satoshi via Nutzap (NIP-61)
+   *
+   * Sends ecash to another Nostr user by publishing a nutzap event.
+   * Currently hardcoded to 1 sat for micro-tipping use case.
+   *
+   * === NUTZAP FLOW ===
+   *
+   * 1. PREPARATION:
+   *    - Fetch recipient's payment preferences (kind 10019)
+   *    - Refresh wallet state to get latest proofs
+   *    - Verify proofs are unspent at the mint
+   *
+   * 2. PROOF SPLITTING:
+   *    The cashuWallet.send() operation "splits" proofs:
+   *    - Input: Your proofs (e.g., one 10-sat proof)
+   *    - Output: "send" proofs (1 sat for recipient) + "keep" proofs (9 sat change)
+   *
+   *    The mint performs this atomically:
+   *    - Marks original proofs as spent
+   *    - Issues new proofs for send and keep amounts
+   *    - P2PK locking applied to send proofs
+   *
+   * 3. P2PK LOCKING:
+   *    Send proofs are locked to the recipient's public key.
+   *    Only someone with the corresponding private key can redeem them.
+   *    This prevents anyone else from claiming the funds.
+   *
+   * 4. NUTZAP PUBLICATION (Kind 9321):
+   *    Event published to Nostr containing:
+   *    - "proof" tags: JSON-serialized locked proofs
+   *    - "amount" tag: Total amount being sent
+   *    - "unit" tag: Currency unit (sat)
+   *    - "u" tag: Mint URL where proofs are redeemable
+   *    - "p" tag: Recipient's hex pubkey
+   *
+   * 5. STATE UPDATE:
+   *    - Store change proofs (keep)
+   *    - Destroy original proofs (prevent double-spend attempts)
+   *    - Sync state to relays
+   *
+   * === ERROR HANDLING ===
+   *
+   * "Already spent" errors trigger automatic retry because:
+   * - Proofs might have been spent from another device
+   * - State might be stale from relay sync delays
+   * - Refreshing wallet state often resolves the issue
+   *
+   * @param {string} recipientNpub - Recipient's public key (default: project donation address)
+   * @param {number} retryCount - Internal retry counter (do not set manually)
+   * @returns {boolean} True if send succeeded, false otherwise
+   */
   send: async (recipientNpub = DEFAULT_RECEIVER, retryCount = 0) => {
     const {
       cashuWallet,
@@ -429,6 +794,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       return false;
     }
 
+    // Refresh wallet state to get latest proofs from relays
     await initWallet();
 
     const freshWallet = get().cashuWallet;
@@ -442,6 +808,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       const amount = 1;
       const unit = "sat";
 
+      // Get recipient's P2PK pubkey for locking proofs
       const { p2pkPubkey } = await fetchUserPaymentInfo(recipientNpub);
       console.log("[Wallet] Sending 1 sat to:", recipientNpub);
 
@@ -455,7 +822,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
         throw new Error("No proofs available");
       }
 
-      // Check which proofs are actually still spendable at the mint
+      // CRITICAL: Verify proof states with mint before spending
+      // Local state might be stale if proofs were spent elsewhere
       const proofStates = await cashuWalletInstance.checkProofsStates(proofs);
 
       // Filter to only unspent proofs
@@ -479,7 +847,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       const recipientHex = decodeKey(recipientNpub);
 
-      // Use only valid proofs for the send
+      // Split proofs: creates send proofs (locked) and keep proofs (change)
+      // P2PK locking is applied via the pubkey option
       const { keep, send } = await cashuWalletInstance.send(
         amount,
         validProofs,
@@ -491,13 +860,15 @@ export const useBitcoinWalletStore = create((set, get) => ({
       console.log("[Wallet] Keep proofs:", keep);
       console.log("[Wallet] Send proofs:", send);
 
-      // Destroy ALL original proofs (including spent ones), store the change
+      // Update wallet state: store change, destroy originals
+      // Destroying ALL proofs (not just valid) cleans up stale state
       await freshWallet.state.update({
         store: keep,
         destroy: proofs,
         mint: DEFAULT_MINT,
       });
 
+      // Build nutzap event (kind 9321) with P2PK-locked proofs
       const proofTags = send.map((proof) => ["proof", JSON.stringify(proof)]);
 
       const nutzapEvent = new NDKEvent(ndkInstance, {
@@ -513,16 +884,19 @@ export const useBitcoinWalletStore = create((set, get) => ({
         ],
       });
 
+      // Sign and publish the nutzap to Nostr relays
       await nutzapEvent.sign(signer);
       await nutzapEvent.publish();
       console.log("[Wallet] Nutzap published!");
 
+      // Update displayed balance
       await verifyAndUpdateBalance();
 
       return true;
     } catch (e) {
       console.error("[Wallet] Error sending nutzap:", e);
 
+      // Retry on spent proof errors (likely stale state)
       const isSpentError =
         e.message?.toLowerCase().includes("already spent") ||
         e.message?.toLowerCase().includes("no valid proofs") ||
@@ -543,7 +917,29 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
   },
 
-  // Reset state (logout)
+  // ============================================================
+  // SESSION MANAGEMENT
+  // ============================================================
+
+  /**
+   * Reset State (Logout)
+   *
+   * Clears all wallet and connection state, returning the store
+   * to its initial state. Called when user logs out.
+   *
+   * What gets cleared:
+   * - Connection state (isConnected, ndkInstance, signer)
+   * - Identity (nostrPubKey, nostrPrivKey)
+   * - Wallet (cashuWallet, walletBalance, proofs)
+   * - UI state (invoice, isCreatingWallet, isWalletReady)
+   *
+   * Note: This does NOT clear localStorage - use the identity
+   * hook's logout() for full session clearing. This only resets
+   * the in-memory Zustand state.
+   *
+   * The wallet and proofs still exist on relays and can be
+   * recovered by logging in again with the same nsec.
+   */
   resetState: () => {
     set({
       isConnected: false,
