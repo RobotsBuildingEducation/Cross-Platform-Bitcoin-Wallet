@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 import useBitcoinWalletStore from "./hooks/useBitcoinWalletStore";
+import { useDecentralizedIdentity } from "./hooks/useDecentralizedIdentity";
 
 function App() {
-  const { generateNostrKeys, auth } = useSharedNostr(
+  const { generateNostrKeys, auth } = useDecentralizedIdentity(
     localStorage.getItem("local_npub"),
     localStorage.getItem("local_nsec")
   );
