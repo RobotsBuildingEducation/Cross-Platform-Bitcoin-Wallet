@@ -20,8 +20,7 @@ import {
   Stack,
   Center,
 } from "@chakra-ui/react";
-import { CopyIcon, CheckIcon, ExternalLinkIcon } from "@chakra-ui/icons";
-import MenuDrawer from "./components/MenuDrawer";
+import { CopyIcon, CheckIcon, ExternalLinkIcon, LockIcon } from "@chakra-ui/icons";
 import { QRCodeSVG } from "qrcode.react";
 import "./App.css";
 import useBitcoinWalletStore from "./hooks/useBitcoinWalletStore";
@@ -317,6 +316,24 @@ function App() {
     }
   };
 
+  // Copy to clipboard helper
+  const copyToClipboard = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: `${label} copied!`,
+        status: "success",
+        duration: 1500,
+      });
+    } catch (err) {
+      toast({
+        title: "Failed to copy",
+        status: "error",
+        duration: 2000,
+      });
+    }
+  };
+
   // Loading state
   if (hydrating) {
     return (
@@ -399,13 +416,6 @@ function App() {
   // Wallet page (authenticated)
   return (
     <Container py={6}>
-      <Flex justify="flex-end" h="48px">
-        <MenuDrawer
-          npub={nostrPubKey}
-          nsec={nostrPrivKey}
-          onLogout={handleLogout}
-        />
-      </Flex>
       <Stack>
         {/* Header */}
         <Flex w="100%" justify="center" align="center">
@@ -531,6 +541,35 @@ function App() {
             {walletError || identityError}
           </Text>
         )}
+
+        {/* Account Actions */}
+        <Divider my={4} />
+        <HStack spacing={3} justify="center" wrap="wrap">
+          <Button
+            size="sm"
+            leftIcon={<CopyIcon />}
+            variant="outline"
+            onClick={() => copyToClipboard(nostrPubKey, "ID")}
+          >
+            Your ID
+          </Button>
+          <Button
+            size="sm"
+            leftIcon={<LockIcon />}
+            variant="outline"
+            onClick={() => copyToClipboard(nostrPrivKey, "Secret Key")}
+          >
+            Secret Key
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            color="gray.500"
+            onClick={handleLogout}
+          >
+            Sign Out
+          </Button>
+        </HStack>
       </Stack>
     </Container>
   );
