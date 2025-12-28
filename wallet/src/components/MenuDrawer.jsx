@@ -34,22 +34,33 @@ function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
 
   return (
     <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="xs">
-      <DrawerOverlay bg="blackAlpha.300" />
-      <DrawerContent bg="white" borderLeftRadius="lg">
-        <DrawerHeader borderBottomWidth="1px" py={3}>
-          <Text fontSize="lg" fontWeight="semibold" color="gray.800">
+      <DrawerOverlay bg="blackAlpha.600" />
+      <DrawerContent
+        bg="black"
+        borderLeftRadius="xl"
+        maxH="auto"
+        h="auto"
+        position="absolute"
+        top={0}
+        right={0}
+        m={0}
+      >
+        <DrawerHeader py={3}>
+          <Text fontSize="md" fontWeight="semibold" color="white">
             Settings
           </Text>
         </DrawerHeader>
 
-        <DrawerBody py={4}>
+        <DrawerBody py={4} pb={6}>
           <VStack spacing={3} align="stretch">
             <HStack spacing={2} justify="center">
               <Button
                 size="sm"
                 leftIcon={<CopyIcon />}
                 variant="outline"
-                colorScheme="gray"
+                borderColor="gray.600"
+                color="white"
+                _hover={{ bg: "gray.800" }}
                 onClick={() => copyToClipboard(npub, "ID")}
               >
                 Your ID
@@ -58,7 +69,9 @@ function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
                 size="sm"
                 leftIcon={<LockIcon />}
                 variant="outline"
-                colorScheme="gray"
+                borderColor="gray.600"
+                color="white"
+                _hover={{ bg: "gray.800" }}
                 onClick={() => copyToClipboard(nsec, "Secret key")}
               >
                 Secret Key
@@ -68,10 +81,11 @@ function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
             <Button
               w="full"
               variant="ghost"
-              color="gray.600"
+              color="gray.400"
               fontWeight="normal"
+              _hover={{ bg: "gray.800", color: "white" }}
               onClick={onLogout}
-              mt={4}
+              mt={2}
             >
               Sign Out
             </Button>
