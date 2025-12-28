@@ -23,6 +23,8 @@ This is a template for users to
 3. `npm install`
 4. `npm run dev`
 
+Demo application: https://beautiful-snickerdoodle-86f087.netlify.app/
+
 ### Dependencies information
 
 Some of the packages installed in `package.json` use specific versions.
