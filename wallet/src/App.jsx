@@ -19,8 +19,15 @@ import {
   Badge,
   Link,
   useDisclosure,
+  Stack,
+  Center,
 } from "@chakra-ui/react";
-import { CopyIcon, CheckIcon, HamburgerIcon, ExternalLinkIcon } from "@chakra-ui/icons";
+import {
+  CopyIcon,
+  CheckIcon,
+  HamburgerIcon,
+  ExternalLinkIcon,
+} from "@chakra-ui/icons";
 import MenuDrawer from "./components/MenuDrawer";
 import { QRCodeSVG } from "qrcode.react";
 import "./App.css";
@@ -72,7 +79,11 @@ function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   const toast = useToast();
-  const { isOpen: isDrawerOpen, onOpen: onDrawerOpen, onClose: onDrawerClose } = useDisclosure();
+  const {
+    isOpen: isDrawerOpen,
+    onOpen: onDrawerOpen,
+    onClose: onDrawerClose,
+  } = useDisclosure();
 
   // Check if user is authenticated
   const isAuthenticated = useMemo(() => {
@@ -399,47 +410,37 @@ function App() {
 
   // Wallet page (authenticated)
   return (
-    <Container maxW="md" py={6}>
-      <VStack spacing={6}>
+    <Container py={6}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          height: "48px",
+        }}
+      >
+        <IconButton
+          padding={"24px"}
+          icon={<HamburgerIcon />}
+          variant="ghost"
+          onClick={onDrawerOpen}
+          aria-label="Open menu"
+        />
+      </div>
+      <Stack>
         {/* Header */}
-        <Flex w="100%" justify="space-between" align="center">
+        <Flex w="100%" justify="center" align="center">
           <HStack spacing={2}>
             <Heading size="lg">Bitcoin Wallet</Heading>
-            <Badge colorScheme={isConnected ? "green" : "red"}>
-              {isConnected ? "Connected" : "Disconnected"}
-            </Badge>
           </HStack>
-          <IconButton
-            icon={<HamburgerIcon />}
-            variant="ghost"
-            onClick={onDrawerOpen}
-            aria-label="Open menu"
-          />
         </Flex>
-
-        {/* Menu Drawer */}
-        <MenuDrawer
-          isOpen={isDrawerOpen}
-          onClose={onDrawerClose}
-          npub={nostrPubKey}
-          nsec={nostrPrivKey}
-          onLogout={() => {
-            onDrawerClose();
-            handleLogout();
-          }}
-        />
 
         {/* Balance Card */}
         <Card w="100%" bg="orange.50">
-          <CardBody>
-            <VStack spacing={2}>
-              <Text fontSize="sm" color="gray.600">
-                Balance
-              </Text>
-              <Heading size="2xl" color="orange.600">
-                {totalBalance} sats
-              </Heading>
-            </VStack>
+          <CardBody textAlign={"center"}>
+            <Center spacing={2}>
+              <Heading color="gray.600">Balance:&nbsp;</Heading>
+              <Heading color="orange.600">{totalBalance} sats</Heading>
+            </Center>
           </CardBody>
         </Card>
 
@@ -469,18 +470,17 @@ function App() {
           <>
             {/* Deposit Section */}
             <Card w="100%">
-              <CardHeader>
-                <Heading size="md">Deposit</Heading>
-              </CardHeader>
               <CardBody>
                 <VStack spacing={4}>
                   <Button
                     colorScheme="green"
                     size="lg"
-                    w="100%"
+                    w="fit-content"
+                    padding={24}
                     onClick={handleDeposit}
                     isLoading={isDepositing}
                     loadingText="..."
+                    mb={24}
                   >
                     Deposit 10 sats
                   </Button>
@@ -498,12 +498,12 @@ function App() {
                         <QRCodeSVG value={invoice} size={200} />
                       </Box>
                       <Button
-                        leftIcon={
-                          copiedInvoice ? <CheckIcon /> : <CopyIcon />
-                        }
+                        leftIcon={copiedInvoice ? <CheckIcon /> : <CopyIcon />}
                         onClick={() => copyInvoice(invoice)}
                         variant="outline"
-                        w="100%"
+                        w="fit-content"
+                        padding={24}
+                        mt={12}
                       >
                         {copiedInvoice ? "Copied!" : "Copy Invoice"}
                       </Button>
@@ -514,16 +514,14 @@ function App() {
             </Card>
 
             {/* Send Section */}
-            <Card w="100%">
-              <CardHeader>
-                <Heading size="md">Send</Heading>
-              </CardHeader>
+            <Card>
               <CardBody>
                 <VStack spacing={4}>
                   <Button
                     colorScheme="blue"
                     size="lg"
-                    w="100%"
+                    w="fit-content"
+                    padding={24}
                     onClick={handleSend}
                     isLoading={isSending}
                     loadingText="Sending..."
@@ -536,8 +534,10 @@ function App() {
                     isExternal
                     color="orange.500"
                     fontSize="sm"
+                    mt={48}
                   >
-                    Verify transactions on nutlife.lol <ExternalLinkIcon mx="2px" />
+                    Verify transactions on nutlife.lol{" "}
+                    <ExternalLinkIcon mx="2px" />
                   </Link>
                 </VStack>
               </CardBody>
@@ -551,7 +551,18 @@ function App() {
             {walletError || identityError}
           </Text>
         )}
-      </VStack>
+      </Stack>
+
+      <MenuDrawer
+        isOpen={isDrawerOpen}
+        onClose={onDrawerClose}
+        npub={nostrPubKey}
+        nsec={nostrPrivKey}
+        onLogout={() => {
+          onDrawerClose();
+          handleLogout();
+        }}
+      />
     </Container>
   );
 }

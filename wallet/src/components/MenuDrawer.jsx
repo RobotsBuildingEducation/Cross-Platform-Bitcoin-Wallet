@@ -33,14 +33,13 @@ function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
   };
 
   return (
-    <Drawer isOpen={isOpen} placement="right" onClose={onClose}>
+    <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="md">
       <DrawerOverlay />
-      <DrawerContent>
+      <DrawerContent backgroundColor="black">
         <DrawerCloseButton />
-        <DrawerHeader>Menu</DrawerHeader>
 
         <DrawerBody>
-          <VStack spacing={4} align="stretch">
+          <VStack spacing={4}>
             <Button
               leftIcon={<CopyIcon />}
               variant="outline"
