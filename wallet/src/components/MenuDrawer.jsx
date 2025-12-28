@@ -4,13 +4,13 @@ import {
   DrawerHeader,
   DrawerOverlay,
   DrawerContent,
-  DrawerCloseButton,
   VStack,
   Button,
+  HStack,
   useToast,
-  Divider,
+  Text,
 } from "@chakra-ui/react";
-import { CopyIcon } from "@chakra-ui/icons";
+import { CopyIcon, LockIcon } from "@chakra-ui/icons";
 
 function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
   const toast = useToast();
@@ -33,30 +33,47 @@ function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
   };
 
   return (
-    <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="md">
-      <DrawerOverlay />
-      <DrawerContent backgroundColor="black">
-        <DrawerCloseButton />
+    <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="xs">
+      <DrawerOverlay bg="blackAlpha.300" />
+      <DrawerContent bg="white" borderLeftRadius="lg">
+        <DrawerHeader borderBottomWidth="1px" py={3}>
+          <Text fontSize="lg" fontWeight="semibold" color="gray.800">
+            Settings
+          </Text>
+        </DrawerHeader>
 
-        <DrawerBody>
-          <VStack spacing={4}>
+        <DrawerBody py={4}>
+          <VStack spacing={3} align="stretch">
+            <HStack spacing={2} justify="center">
+              <Button
+                size="sm"
+                leftIcon={<CopyIcon />}
+                variant="outline"
+                colorScheme="gray"
+                onClick={() => copyToClipboard(npub, "ID")}
+              >
+                Your ID
+              </Button>
+              <Button
+                size="sm"
+                leftIcon={<LockIcon />}
+                variant="outline"
+                colorScheme="gray"
+                onClick={() => copyToClipboard(nsec, "Secret key")}
+              >
+                Secret Key
+              </Button>
+            </HStack>
+
             <Button
-              leftIcon={<CopyIcon />}
-              variant="outline"
-              onClick={() => copyToClipboard(npub, "ID")}
+              w="full"
+              variant="ghost"
+              color="gray.600"
+              fontWeight="normal"
+              onClick={onLogout}
+              mt={4}
             >
-              Copy ID
-            </Button>
-            <Button
-              leftIcon={<CopyIcon />}
-              variant="outline"
-              onClick={() => copyToClipboard(nsec, "Secret key")}
-            >
-              Copy Secret Key
-            </Button>
-            <Divider />
-            <Button colorScheme="red" variant="ghost" onClick={onLogout}>
-              Logout
+              Sign Out
             </Button>
           </VStack>
         </DrawerBody>
