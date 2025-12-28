@@ -20,7 +20,12 @@ import {
   Stack,
   Center,
 } from "@chakra-ui/react";
-import { CopyIcon, CheckIcon, ExternalLinkIcon, LockIcon } from "@chakra-ui/icons";
+import {
+  CopyIcon,
+  CheckIcon,
+  ExternalLinkIcon,
+  LockIcon,
+} from "@chakra-ui/icons";
 import { QRCodeSVG } from "qrcode.react";
 import "./App.css";
 import useBitcoinWalletStore from "./hooks/useBitcoinWalletStore";
@@ -525,9 +530,10 @@ function App() {
                     color="orange.500"
                     fontSize="sm"
                     mt={48}
+                    border="1px solid blue"
+                    padding={12}
                   >
-                    Verify transactions on nutlife.lol{" "}
-                    <ExternalLinkIcon mx="2px" />
+                    Verify your transactions
                   </Link>
                 </VStack>
               </CardBody>
@@ -544,12 +550,14 @@ function App() {
 
         {/* Account Actions */}
         <Divider my={4} />
-        <HStack spacing={3} justify="center" wrap="wrap">
+        <VStack spacing={16} justify="center" wrap="wrap">
           <Button
             size="sm"
             leftIcon={<CopyIcon />}
             variant="outline"
             onClick={() => copyToClipboard(nostrPubKey, "ID")}
+            width="200px"
+            padding={16}
           >
             Your ID
           </Button>
@@ -558,6 +566,8 @@ function App() {
             leftIcon={<LockIcon />}
             variant="outline"
             onClick={() => copyToClipboard(nostrPrivKey, "Secret Key")}
+            width="200px"
+            padding={16}
           >
             Secret Key
           </Button>
@@ -566,10 +576,12 @@ function App() {
             variant="ghost"
             color="gray.500"
             onClick={handleLogout}
+            width="200px"
+            padding={16}
           >
             Sign Out
           </Button>
-        </HStack>
+        </VStack>
       </Stack>
     </Container>
   );
