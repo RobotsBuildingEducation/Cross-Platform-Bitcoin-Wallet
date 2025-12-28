@@ -14,20 +14,13 @@ import {
   CardHeader,
   Divider,
   Spinner,
-  IconButton,
   Flex,
   Badge,
   Link,
-  useDisclosure,
   Stack,
   Center,
 } from "@chakra-ui/react";
-import {
-  CopyIcon,
-  CheckIcon,
-  HamburgerIcon,
-  ExternalLinkIcon,
-} from "@chakra-ui/icons";
+import { CopyIcon, CheckIcon, ExternalLinkIcon } from "@chakra-ui/icons";
 import MenuDrawer from "./components/MenuDrawer";
 import { QRCodeSVG } from "qrcode.react";
 import "./App.css";
@@ -79,11 +72,6 @@ function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   const toast = useToast();
-  const {
-    isOpen: isDrawerOpen,
-    onOpen: onDrawerOpen,
-    onClose: onDrawerClose,
-  } = useDisclosure();
 
   // Check if user is authenticated
   const isAuthenticated = useMemo(() => {
@@ -411,21 +399,13 @@ function App() {
   // Wallet page (authenticated)
   return (
     <Container py={6}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          height: "48px",
-        }}
-      >
-        <IconButton
-          padding={"24px"}
-          icon={<HamburgerIcon />}
-          variant="ghost"
-          onClick={onDrawerOpen}
-          aria-label="Open menu"
+      <Flex justify="flex-end" h="48px">
+        <MenuDrawer
+          npub={nostrPubKey}
+          nsec={nostrPrivKey}
+          onLogout={handleLogout}
         />
-      </div>
+      </Flex>
       <Stack>
         {/* Header */}
         <Flex w="100%" justify="center" align="center">
@@ -552,17 +532,6 @@ function App() {
           </Text>
         )}
       </Stack>
-
-      <MenuDrawer
-        isOpen={isDrawerOpen}
-        onClose={onDrawerClose}
-        npub={nostrPubKey}
-        nsec={nostrPrivKey}
-        onLogout={() => {
-          onDrawerClose();
-          handleLogout();
-        }}
-      />
     </Container>
   );
 }

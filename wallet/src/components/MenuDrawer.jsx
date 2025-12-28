@@ -1,19 +1,23 @@
 import {
-  Drawer,
-  DrawerBody,
-  DrawerHeader,
-  DrawerOverlay,
-  DrawerContent,
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+  PopoverHeader,
+  PopoverBody,
+  PopoverArrow,
   VStack,
   Button,
   HStack,
+  IconButton,
   useToast,
   Text,
+  useDisclosure,
 } from "@chakra-ui/react";
-import { CopyIcon, LockIcon } from "@chakra-ui/icons";
+import { CopyIcon, LockIcon, HamburgerIcon } from "@chakra-ui/icons";
 
-function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
+function MenuDrawer({ npub, nsec, onLogout }) {
   const toast = useToast();
+  const { isOpen, onToggle, onClose } = useDisclosure();
 
   const copyToClipboard = async (text, label) => {
     try {
@@ -32,26 +36,37 @@ function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
     }
   };
 
+  const handleLogout = () => {
+    onClose();
+    onLogout();
+  };
+
   return (
-    <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="xs">
-      <DrawerOverlay bg="blackAlpha.600" />
-      <DrawerContent
+    <Popover isOpen={isOpen} onClose={onClose} placement="bottom-end">
+      <PopoverTrigger>
+        <IconButton
+          icon={<HamburgerIcon />}
+          variant="ghost"
+          onClick={onToggle}
+          aria-label="Open menu"
+          size="lg"
+        />
+      </PopoverTrigger>
+      <PopoverContent
         bg="black"
-        borderLeftRadius="xl"
-        maxH="auto"
-        h="auto"
-        position="absolute"
-        top={0}
-        right={0}
-        m={0}
+        borderColor="gray.700"
+        borderRadius="xl"
+        w="auto"
+        minW="200px"
       >
-        <DrawerHeader py={3}>
+        <PopoverArrow bg="black" />
+        <PopoverHeader borderBottomWidth="1px" borderColor="gray.700" py={3}>
           <Text fontSize="md" fontWeight="semibold" color="white">
             Settings
           </Text>
-        </DrawerHeader>
+        </PopoverHeader>
 
-        <DrawerBody py={4} pb={6}>
+        <PopoverBody py={4}>
           <VStack spacing={3} align="stretch">
             <HStack spacing={2} justify="center">
               <Button
@@ -84,15 +99,15 @@ function MenuDrawer({ isOpen, onClose, npub, nsec, onLogout }) {
               color="gray.400"
               fontWeight="normal"
               _hover={{ bg: "gray.800", color: "white" }}
-              onClick={onLogout}
+              onClick={handleLogout}
               mt={2}
             >
               Sign Out
             </Button>
           </VStack>
-        </DrawerBody>
-      </DrawerContent>
-    </Drawer>
+        </PopoverBody>
+      </PopoverContent>
+    </Popover>
   );
 }
 
