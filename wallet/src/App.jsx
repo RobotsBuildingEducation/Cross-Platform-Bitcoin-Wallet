@@ -361,15 +361,16 @@ function App() {
           </Heading>
 
           {/* Create Account */}
-          <Card w="100%">
+          <Card w="100%" align="center">
             <CardBody>
               <Button
                 colorScheme="orange"
                 size="lg"
-                w="100%"
+                w="200px"
                 onClick={handleCreateAccount}
                 isLoading={isCreatingAccount}
                 loadingText="Creating..."
+                padding={"16px"}
               >
                 Create New Account
               </Button>
@@ -379,7 +380,7 @@ function App() {
           <HStack w="100%" align="center">
             <Divider />
             <Text px={4} color="gray.500" fontSize="sm">
-              OR
+              or
             </Text>
             <Divider />
           </HStack>
@@ -392,15 +393,19 @@ function App() {
                   placeholder="nsec1..."
                   value={nsecInput}
                   onChange={(e) => setNsecInput(e.target.value)}
-                  type="password"
+                  mb={4}
+                  height={"32px"}
+                  fontSize={"16px"}
+                  padding={8}
                 />
                 <Button
                   colorScheme="blue"
                   size="lg"
-                  w="100%"
+                  w="200px"
                   onClick={handleSignIn}
                   isLoading={isSigningIn}
                   loadingText="Signing in..."
+                  padding={"16px"}
                 >
                   Sign In
                 </Button>
@@ -448,7 +453,10 @@ function App() {
                 <Button
                   colorScheme="orange"
                   size="lg"
-                  w="100%"
+                  w="fit-content"
+                  padding={24}
+                  bg="white"
+                  color="black"
                   onClick={handleCreateWallet}
                   isLoading={isCreatingWallet}
                   loadingText="Creating wallet..."
