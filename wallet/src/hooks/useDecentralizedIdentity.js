@@ -3,12 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Buffer } from "buffer";
 import { bech32 } from "bech32";
 
-import NDK, {
-  NDKPrivateKeySigner,
-  NDKNip07Signer,
-  NDKKind,
-  NDKEvent,
-} from "@nostr-dev-kit/ndk";
+import NDK, { NDKPrivateKeySigner, NDKNip07Signer } from "@nostr-dev-kit/ndk";
 
 const ndk = new NDK({
   explicitRelayUrls: ["wss://relay.damus.io", "wss://relay.primal.net"],
@@ -88,52 +83,6 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
     setNostrPrivKey(encodedNsec);
     setNostrPubKey(publicKey);
 
-    if (!localStorage.getItem("local_nsec")) {
-      //Creating profile... 2/4
-      // setLoadingMessage("createAccount.isCreatingProfile");
-
-      postNostrContent(
-        JSON.stringify({
-          name: userDisplayName,
-          about: "A student onboarded with Robots Building Education",
-          // profilePictureUrl:
-          //   "https://image.nostr.build/c8d21fe8773d7c5ddf3d6ef73ffe76dbeeec881c131bfb59927ce0b8b71a5607.png",
-          // // "https://primal.b-cdn.net/media-cache?s=o&a=1&u=https%3A%2F%2Fm.primal.net%2FKBLq.png",
-        }),
-        0,
-        publicKey,
-        encodedNsec
-      );
-
-      // setLoadingMessage("createAccount.isCreatingProfilePicture");
-      // //Creating profile picture... 3/4
-      // setProfilePicture(
-      //   "https://primal.b-cdn.net/media-cache?s=o&a=1&u=https%3A%2F%2Fm.primal.net%2FKBLq.png",
-      //   publicKey,
-      //   encodedNsec
-      // );
-
-      // if (
-      //   window.location.hostname !== "localhost" &&
-      //   window.location.hostname !== "127.0.0.1"
-      // ) {
-
-      // setLoadingMessage("createAccount.isCreatingIntroPost");
-      //Creating introduction post... 4/4
-      // if (window.location.hostname !== "localhost") {
-      postNostrContent(
-        "gm nostr! I've joined #LearnWithNostr from Tiktok by creating an account with https://robotsbuildingeducation.com so I can learn how to code with AI.",
-        1,
-        publicKey,
-        encodedNsec
-      );
-      // }
-      // await followUserOnNostr(
-      //   "npub14vskcp90k6gwp6sxjs2jwwqpcmahg6wz3h5vzq0yn6crrsq0utts52axlt",
-      //   publicKey,
-      //   encodedNsec
-      // );
-    }
     console.log("encodednsec", encodedNsec);
     localStorage.setItem("local_nsec", encodedNsec);
     localStorage.setItem("local_npub", publicKey);
@@ -312,65 +261,12 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
     }
   };
 
-  const postNostrContent = async (
-    content,
-    kind = NDKKind.Text,
-    npubRef = null,
-    nsecRef = null,
-    tags = []
-  ) => {
-    try {
-      // If a nsecRef is provided and it's a valid nsec, login with it
-      if (nsecRef && nsecRef.startsWith("nsec")) {
-        const loginResult = await auth(nsecRef);
-        if (!loginResult) return;
-      }
-
-      // Ensure we have a signer (will initialize NIP-07 or nsec signer if needed)
-      const signer = await ensureSigner();
-      if (!signer) {
-        setErrorMessage("No signer available. Please login first.");
-        return;
-      }
-
-      // If npubRef is provided, we can decode it to hex if needed.
-      // But it's generally not required since NDKEvent uses ndk.signer to determine the pubkey.
-      const event = new NDKEvent(ndk, {
-        kind,
-        tags: Array.isArray(tags) ? tags : [],
-        content: content,
-        created_at: Math.floor(Date.now() / 1000),
-      });
-
-      await event.sign(ndk.signer);
-      const relays = await event.publish();
-
-      if (relays.size > 0) {
-        console.log("Posted successfully to relays:", Array.from(relays));
-      } else {
-        console.warn("No relay acknowledged the event.");
-      }
-    } catch (error) {
-      console.error("Error posting content:", error);
-      setErrorMessage(error.message);
-    }
-  };
-
-  const getHexNPub = (npub) => {
-    // Decode the npub from Bech32
-    const { words: npubWords } = bech32.decode(npub);
-    const hexNpub = Buffer.from(bech32.fromWords(npubWords)).toString("hex");
-
-    return hexNpub;
-  };
-
   return {
     isConnected,
     errorMessage,
     nostrPubKey,
     nostrPrivKey,
     generateNostrKeys,
-    postNostrContent,
     auth,
     authWithExtension,
     isNip07Available,

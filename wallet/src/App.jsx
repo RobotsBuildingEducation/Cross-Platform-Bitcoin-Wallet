@@ -3,6 +3,11 @@ import "./App.css";
 import useBitcoinWalletStore from "./hooks/useBitcoinWalletStore";
 
 function App() {
+  const { generateNostrKeys, auth } = useSharedNostr(
+    localStorage.getItem("local_npub"),
+    localStorage.getItem("local_nsec")
+  );
+
   // State - individual selectors
   const cashuWallet = useBitcoinWalletStore((state) => state.cashuWallet);
   const walletBalance = useBitcoinWalletStore((state) => state.walletBalance);
