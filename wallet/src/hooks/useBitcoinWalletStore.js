@@ -2,11 +2,7 @@
 // NIP-60 (Cashu Wallets) and NIP-61 (Nutzaps) implementation
 // Zustand store for global wallet state
 import { create } from "zustand";
-import NDK, {
-  NDKPrivateKeySigner,
-  NDKNip07Signer,
-  NDKEvent,
-} from "@nostr-dev-kit/ndk";
+import NDK, { NDKPrivateKeySigner, NDKEvent } from "@nostr-dev-kit/ndk";
 import { NDKCashuWallet } from "@nostr-dev-kit/ndk-wallet";
 import { Buffer } from "buffer";
 import { bech32 } from "bech32";
@@ -115,11 +111,10 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
   // Connect to Nostr relays
   connectToNostr: async (npubRef = null, nsecRef = null) => {
-    const { setError, nostrPrivKey, nostrPubKey } = get();
+    const { setError, nostrPrivKey } = get();
 
     const storedNsec = localStorage.getItem("local_nsec");
-    const isNip07 = localStorage.getItem("nip07_signer") === "true";
-    const nsec = nsecRef || (storedNsec !== "nip07" ? nostrPrivKey : null);
+    const nsec = nsecRef || storedNsec || nostrPrivKey;
 
     try {
       const ndkInstance = new NDK({
@@ -127,19 +122,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
       });
 
       await ndkInstance.connect();
-
-      // Handle NIP-07 mode
-      if (isNip07 && typeof window !== "undefined" && window.nostr) {
-        console.log("[Wallet] Using NIP-07 signer");
-        const signer = new NDKNip07Signer();
-        await signer.blockUntilReady();
-        ndkInstance.signer = signer;
-        const user = await signer.user();
-        ndkInstance.activeUser = user;
-
-        set({ isConnected: true, ndkInstance, signer });
-        return { ndkInstance, signer };
-      }
 
       // Handle private key mode
       if (!nsec || !nsec.startsWith("nsec")) {
@@ -169,14 +151,13 @@ export const useBitcoinWalletStore = create((set, get) => ({
   init: async () => {
     const storedNpub = localStorage.getItem("local_npub");
     const storedNsec = localStorage.getItem("local_nsec");
-    const isNip07 = localStorage.getItem("nip07_signer") === "true";
 
     if (storedNpub) set({ nostrPubKey: storedNpub });
-    if (storedNsec && storedNsec !== "nip07") set({ nostrPrivKey: storedNsec });
+    if (storedNsec) set({ nostrPrivKey: storedNsec });
 
     const { connectToNostr } = get();
 
-    if ((isNip07 && storedNpub) || (storedNpub && storedNsec)) {
+    if (storedNpub && storedNsec) {
       const connection = await connectToNostr(storedNpub, storedNsec);
       return !!connection;
     }
@@ -184,8 +165,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
     return false;
   },
 
-  // Initialize wallet
-  // Initialize wallet (load existing only - does NOT create new)
   // Initialize wallet (load existing only - does NOT create new)
   initWallet: async () => {
     const {
@@ -229,7 +208,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       const pk = signer.privateKey;
       const wallet = new NDKCashuWallet(ndkInstance);
       wallet.mints = [DEFAULT_MINT];
-      wallet.walletId = "Robots Building Education Wallet"; // Add this line
+      wallet.walletId = "Robots Building Education Wallet";
 
       if (pk) {
         wallet.privkey = pk;
@@ -275,7 +254,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
   },
 
-  // Create and publish new wallet
   // Create and publish new wallet
   createNewWallet: async () => {
     const { ndkInstance, signer, setError, verifyAndUpdateBalance } = get();

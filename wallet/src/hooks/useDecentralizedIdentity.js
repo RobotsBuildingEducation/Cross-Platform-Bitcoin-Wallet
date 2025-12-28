@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Buffer } from "buffer";
 import { bech32 } from "bech32";
 
-import NDK, { NDKPrivateKeySigner, NDKNip07Signer } from "@nostr-dev-kit/ndk";
+import NDK, { NDKPrivateKeySigner } from "@nostr-dev-kit/ndk";
 
 const ndk = new NDK({
   explicitRelayUrls: ["wss://relay.damus.io", "wss://relay.primal.net"],
@@ -21,13 +21,12 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
     // Load keys from local storage if they exist
     const storedNpub = localStorage.getItem("local_npub");
     const storedNsec = localStorage.getItem("local_nsec");
-    const isNip07 = localStorage.getItem("nip07_signer") === "true";
 
     if (storedNpub) {
       setNostrPubKey(storedNpub);
     }
 
-    if (storedNsec && storedNsec !== "nip07") {
+    if (storedNsec) {
       setNostrPrivKey(storedNsec);
     }
 
@@ -36,18 +35,7 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
         await ndk.connect();
         setIsConnected(true);
 
-        if (isNip07 && typeof window !== "undefined" && window.nostr) {
-          const signer = new NDKNip07Signer();
-          await signer.blockUntilReady();
-          ndk.signer = signer;
-          const user = await signer.user();
-          ndk.activeUser = user; // Add this
-          console.log("NIP-07 signer initialized");
-        } else if (
-          storedNsec &&
-          storedNsec !== "nip07" &&
-          storedNsec.startsWith("nsec")
-        ) {
+        if (storedNsec && storedNsec.startsWith("nsec")) {
           const { words: nsecWords } = bech32.decode(storedNsec);
           const hexNsec = Buffer.from(bech32.fromWords(nsecWords)).toString(
             "hex"
@@ -56,7 +44,7 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
           await signer.blockUntilReady();
           ndk.signer = signer;
           const user = await signer.user();
-          ndk.activeUser = user; // Add this
+          ndk.activeUser = user;
           console.log("Private key signer initialized");
         }
       } catch (err) {
@@ -98,13 +86,8 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
         "npub1mgt5c7qh6dm9rg57mrp89rqtzn64958nj5w9g2d2h9dng27hmp0sww7u2v";
 
       const storedNsec = localStorage.getItem("local_nsec");
-      const isNip07 = localStorage.getItem("nip07_signer") === "true";
 
-      const nsec =
-        nsecRef ||
-        (storedNsec !== "nip07" ? storedNsec : null) ||
-        nostrPrivKey ||
-        defaultNsec;
+      const nsec = nsecRef || storedNsec || nostrPrivKey || defaultNsec;
       const npub =
         npubRef ||
         localStorage.getItem("local_npub") ||
@@ -126,13 +109,6 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
         await ndkInstance.connect();
 
         setIsConnected(true);
-
-        // Handle NIP-07 mode - use extension signer
-        if (isNip07 && typeof window !== "undefined" && window.nostr) {
-          const signer = new NDKNip07Signer();
-          await signer.blockUntilReady();
-          return { ndkInstance, hexNpub, signer };
-        }
 
         // Handle private key mode
         if (nsec && nsec.startsWith("nsec")) {
@@ -169,14 +145,13 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
       ndk.signer = signer;
 
       const user = await signer.user();
-      ndk.activeUser = user; // Add this line
+      ndk.activeUser = user;
 
       setNostrPubKey(user.npub);
       setNostrPrivKey(nsec);
       localStorage.setItem("local_npub", user.npub);
       console.log("local_nsec", nsec);
       localStorage.setItem("local_nsec", nsec);
-      localStorage.removeItem("nip07_signer");
       setErrorMessage(null);
 
       return { user, signer };
@@ -187,31 +162,13 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
     }
   };
 
-  const isNip07Available = () => {
-    return typeof window !== "undefined" && window.nostr;
-  };
-
-  const isNip07Mode = () => {
-    return (
-      typeof window !== "undefined" &&
-      localStorage.getItem("nip07_signer") === "true"
-    );
-  };
-
-  // Helper to ensure the signer is ready (initializes NIP-07 signer if needed)
+  // Helper to ensure the signer is ready
   const ensureSigner = async () => {
     if (ndk.signer) return ndk.signer;
 
-    if (isNip07Mode() && isNip07Available()) {
-      const signer = new NDKNip07Signer();
-      await signer.blockUntilReady();
-      ndk.signer = signer;
-      return signer;
-    }
-
     // Try to use stored nsec if available
     const storedNsec = localStorage.getItem("local_nsec");
-    if (storedNsec && storedNsec !== "nip07" && storedNsec.startsWith("nsec")) {
+    if (storedNsec && storedNsec.startsWith("nsec")) {
       try {
         const { words: nsecWords } = bech32.decode(storedNsec);
         const hexNsec = Buffer.from(bech32.fromWords(nsecWords)).toString(
@@ -229,36 +186,14 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
     return null;
   };
 
-  const authWithExtension = async () => {
-    try {
-      if (!isNip07Available()) {
-        throw new Error(
-          "No Nostr extension found. Please install a NIP-07 compatible extension like nos2x or Alby."
-        );
-      }
-
-      const signer = new NDKNip07Signer();
-      await signer.blockUntilReady();
-      ndk.signer = signer;
-
-      const user = await signer.user();
-      ndk.activeUser = user; // Add this
-      const npub = user.npub;
-
-      setNostrPubKey(npub);
-      setNostrPrivKey(""); // No private key with NIP-07
-      localStorage.setItem("local_npub", npub);
-      localStorage.setItem("local_nsec", "nip07"); // Marker to indicate NIP-07 mode
-      localStorage.setItem("nip07_signer", "true");
-      localStorage.setItem("uniqueId", npub);
-      setErrorMessage(null);
-
-      return { user, signer };
-    } catch (error) {
-      console.error("Error logging in with NIP-07 extension:", error);
-      setErrorMessage(error.message);
-      return null;
-    }
+  const logout = () => {
+    localStorage.removeItem("local_npub");
+    localStorage.removeItem("local_nsec");
+    localStorage.removeItem("uniqueId");
+    setNostrPubKey("");
+    setNostrPrivKey("");
+    ndk.signer = null;
+    ndk.activeUser = null;
   };
 
   return {
@@ -268,10 +203,8 @@ export const useDecentralizedIdentity = (initialNpub, initialNsec) => {
     nostrPrivKey,
     generateNostrKeys,
     auth,
-    authWithExtension,
-    isNip07Available,
-    isNip07Mode,
     ensureSigner,
+    logout,
     ndk,
   };
 };
