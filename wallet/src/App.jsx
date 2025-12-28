@@ -14,21 +14,18 @@ import {
   CardHeader,
   Divider,
   Spinner,
-  IconButton,
   Flex,
   Badge,
   Link,
-  useDisclosure,
   Stack,
   Center,
 } from "@chakra-ui/react";
 import {
   CopyIcon,
   CheckIcon,
-  HamburgerIcon,
   ExternalLinkIcon,
+  LockIcon,
 } from "@chakra-ui/icons";
-import MenuDrawer from "./components/MenuDrawer";
 import { QRCodeSVG } from "qrcode.react";
 import "./App.css";
 import useBitcoinWalletStore from "./hooks/useBitcoinWalletStore";
@@ -79,11 +76,6 @@ function App() {
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   const toast = useToast();
-  const {
-    isOpen: isDrawerOpen,
-    onOpen: onDrawerOpen,
-    onClose: onDrawerClose,
-  } = useDisclosure();
 
   // Check if user is authenticated
   const isAuthenticated = useMemo(() => {
@@ -329,6 +321,24 @@ function App() {
     }
   };
 
+  // Copy to clipboard helper
+  const copyToClipboard = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast({
+        title: `${label} copied!`,
+        status: "success",
+        duration: 1500,
+      });
+    } catch (err) {
+      toast({
+        title: "Failed to copy",
+        status: "error",
+        duration: 2000,
+      });
+    }
+  };
+
   // Loading state
   if (hydrating) {
     return (
@@ -411,21 +421,6 @@ function App() {
   // Wallet page (authenticated)
   return (
     <Container py={6}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "flex-end",
-          height: "48px",
-        }}
-      >
-        <IconButton
-          padding={"24px"}
-          icon={<HamburgerIcon />}
-          variant="ghost"
-          onClick={onDrawerOpen}
-          aria-label="Open menu"
-        />
-      </div>
       <Stack>
         {/* Header */}
         <Flex w="100%" justify="center" align="center">
@@ -535,9 +530,10 @@ function App() {
                     color="orange.500"
                     fontSize="sm"
                     mt={48}
+                    border="1px solid blue"
+                    padding={12}
                   >
-                    Verify transactions on nutlife.lol{" "}
-                    <ExternalLinkIcon mx="2px" />
+                    Verify your transactions
                   </Link>
                 </VStack>
               </CardBody>
@@ -551,18 +547,42 @@ function App() {
             {walletError || identityError}
           </Text>
         )}
-      </Stack>
 
-      <MenuDrawer
-        isOpen={isDrawerOpen}
-        onClose={onDrawerClose}
-        npub={nostrPubKey}
-        nsec={nostrPrivKey}
-        onLogout={() => {
-          onDrawerClose();
-          handleLogout();
-        }}
-      />
+        {/* Account Actions */}
+        <Divider my={4} />
+        <VStack spacing={16} justify="center" wrap="wrap">
+          <Button
+            size="sm"
+            leftIcon={<CopyIcon />}
+            variant="outline"
+            onClick={() => copyToClipboard(nostrPubKey, "ID")}
+            width="200px"
+            padding={16}
+          >
+            Your ID
+          </Button>
+          <Button
+            size="sm"
+            leftIcon={<LockIcon />}
+            variant="outline"
+            onClick={() => copyToClipboard(nostrPrivKey, "Secret Key")}
+            width="200px"
+            padding={16}
+          >
+            Secret Key
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            color="gray.500"
+            onClick={handleLogout}
+            width="200px"
+            padding={16}
+          >
+            Sign Out
+          </Button>
+        </VStack>
+      </Stack>
     </Container>
   );
 }
