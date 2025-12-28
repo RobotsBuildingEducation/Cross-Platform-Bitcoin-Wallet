@@ -427,10 +427,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
   },
 
   // Send 1 sat via nutzap
-  sendOneSatToNpub: async (
-    recipientNpub = DEFAULT_RECEIVER,
-    retryCount = 0
-  ) => {
+  send: async (recipientNpub = DEFAULT_RECEIVER, retryCount = 0) => {
     const {
       cashuWallet,
       ndkInstance,
@@ -558,7 +555,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
           `[Wallet] Retrying... attempt ${retryCount + 1}/${MAX_RETRIES}`
         );
         await new Promise((resolve) => setTimeout(resolve, 500));
-        return get().sendOneSatToNpub(recipientNpub, retryCount + 1);
+        return get().send(recipientNpub, retryCount + 1);
       }
 
       setError(e.message);
