@@ -1,10 +1,9 @@
 import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverHeader,
-  PopoverBody,
-  PopoverArrow,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
   VStack,
   Button,
   HStack,
@@ -17,7 +16,7 @@ import { CopyIcon, LockIcon, HamburgerIcon } from "@chakra-ui/icons";
 
 function MenuDrawer({ npub, nsec, onLogout }) {
   const toast = useToast();
-  const { isOpen, onToggle, onClose } = useDisclosure();
+  const { isOpen, onOpen, onClose } = useDisclosure();
 
   const copyToClipboard = async (text, label) => {
     try {
@@ -42,72 +41,67 @@ function MenuDrawer({ npub, nsec, onLogout }) {
   };
 
   return (
-    <Popover isOpen={isOpen} onClose={onClose} placement="bottom-end">
-      <PopoverTrigger>
-        <IconButton
-          icon={<HamburgerIcon />}
-          variant="ghost"
-          onClick={onToggle}
-          aria-label="Open menu"
-          size="lg"
-        />
-      </PopoverTrigger>
-      <PopoverContent
-        bg="black"
-        borderColor="gray.700"
-        borderRadius="xl"
-        w="auto"
-        minW="200px"
-      >
-        <PopoverArrow bg="black" />
-        <PopoverHeader borderBottomWidth="1px" borderColor="gray.700" py={3}>
-          <Text fontSize="md" fontWeight="semibold" color="white">
-            Settings
-          </Text>
-        </PopoverHeader>
+    <>
+      <IconButton
+        icon={<HamburgerIcon />}
+        variant="ghost"
+        onClick={onOpen}
+        aria-label="Open menu"
+        padding="24px"
+      />
 
-        <PopoverBody py={4}>
-          <VStack spacing={3} align="stretch">
-            <HStack spacing={2} justify="center">
-              <Button
-                size="sm"
-                leftIcon={<CopyIcon />}
-                variant="outline"
-                borderColor="gray.600"
-                color="white"
-                _hover={{ bg: "gray.800" }}
-                onClick={() => copyToClipboard(npub, "ID")}
-              >
-                Your ID
-              </Button>
-              <Button
-                size="sm"
-                leftIcon={<LockIcon />}
-                variant="outline"
-                borderColor="gray.600"
-                color="white"
-                _hover={{ bg: "gray.800" }}
-                onClick={() => copyToClipboard(nsec, "Secret key")}
-              >
-                Secret Key
-              </Button>
-            </HStack>
+      <Modal isOpen={isOpen} onClose={onClose} size="xs" isCentered>
+        <ModalOverlay bg="blackAlpha.600" />
+        <ModalContent bg="black" borderRadius="xl" mx={4}>
+          <ModalHeader borderBottomWidth="1px" borderColor="gray.700" py={3}>
+            <Text fontSize="md" fontWeight="semibold" color="white">
+              Settings
+            </Text>
+          </ModalHeader>
 
-            <Button
-              w="full"
-              variant="ghost"
-              color="gray.400"
-              fontWeight="normal"
-              _hover={{ bg: "gray.800", color: "white" }}
-              onClick={handleLogout}
-              mt={2}
-            >
-              Sign Out
-            </Button>
-          </VStack>
-        </PopoverBody>
-      </PopoverContent>
-    </Popover>
+          <ModalBody py={4} pb={6}>
+            <VStack spacing={3} align="stretch">
+              <HStack spacing={2} justify="center">
+                <Button
+                  size="sm"
+                  leftIcon={<CopyIcon />}
+                  variant="outline"
+                  borderColor="gray.600"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  onClick={() => copyToClipboard(npub, "ID")}
+                >
+                  Your ID
+                </Button>
+                <Button
+                  size="sm"
+                  leftIcon={<LockIcon />}
+                  variant="outline"
+                  borderColor="gray.600"
+                  color="white"
+                  _hover={{ bg: "gray.800" }}
+                  onClick={() => copyToClipboard(nsec, "Secret key")}
+                >
+                  Secret Key
+                </Button>
+              </HStack>
+
+              <Button
+                w="full"
+                variant="ghost"
+                color="gray.400"
+                fontWeight="normal"
+                _hover={{ bg: "gray.800", color: "white" }}
+                onClick={handleLogout}
+                mt={2}
+              >
+                Sign Out
+              </Button>
+            </VStack>
+          </ModalBody>
+        </ModalContent>
+      </Modal>
+    </>
   );
 }
 
