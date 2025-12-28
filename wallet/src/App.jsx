@@ -17,8 +17,11 @@ import {
   IconButton,
   Flex,
   Badge,
+  Link,
+  useDisclosure,
 } from "@chakra-ui/react";
-import { CopyIcon, CheckIcon } from "@chakra-ui/icons";
+import { CopyIcon, CheckIcon, HamburgerIcon, ExternalLinkIcon } from "@chakra-ui/icons";
+import MenuDrawer from "./components/MenuDrawer";
 import { QRCodeSVG } from "qrcode.react";
 import "./App.css";
 import useBitcoinWalletStore from "./hooks/useBitcoinWalletStore";
@@ -62,15 +65,14 @@ function App() {
   // Local state
   const [hydrating, setHydrating] = useState(true);
   const [nsecInput, setNsecInput] = useState("");
-  const [depositAmount, setDepositAmount] = useState("10");
   const [isDepositing, setIsDepositing] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [copiedInvoice, setCopiedInvoice] = useState(false);
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
   const toast = useToast();
+  const { isOpen: isDrawerOpen, onOpen: onDrawerOpen, onClose: onDrawerClose } = useDisclosure();
 
   // Check if user is authenticated
   const isAuthenticated = useMemo(() => {
@@ -217,18 +219,9 @@ function App() {
     }
   };
 
-  // Handle deposit
+  // Handle deposit (always 10 sats)
   const handleDeposit = async () => {
-    const amount = parseInt(depositAmount, 10);
-    if (isNaN(amount) || amount < 1) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter a valid amount (minimum 1 sat)",
-        status: "warning",
-        duration: 3000,
-      });
-      return;
-    }
+    const amount = 10;
 
     setIsDepositing(true);
     try {
@@ -305,17 +298,12 @@ function App() {
     }
   };
 
-  // Copy to clipboard
-  const copyToClipboard = async (text, type) => {
+  // Copy invoice to clipboard
+  const copyInvoice = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
-      if (type === "invoice") {
-        setCopiedInvoice(true);
-        setTimeout(() => setCopiedInvoice(false), 2000);
-      } else {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
+      setCopiedInvoice(true);
+      setTimeout(() => setCopiedInvoice(false), 2000);
       toast({
         title: "Copied!",
         status: "success",
@@ -350,31 +338,20 @@ function App() {
           <Heading size="lg" textAlign="center">
             Bitcoin Wallet
           </Heading>
-          <Text color="gray.500" textAlign="center">
-            Create a new account or sign in with your existing Nostr key
-          </Text>
 
-          {/* Create Account Card */}
+          {/* Create Account */}
           <Card w="100%">
-            <CardHeader>
-              <Heading size="md">Create Account</Heading>
-            </CardHeader>
             <CardBody>
-              <VStack spacing={4}>
-                <Text fontSize="sm" color="gray.500">
-                  Generate a new Nostr identity and Bitcoin wallet
-                </Text>
-                <Button
-                  colorScheme="orange"
-                  size="lg"
-                  w="100%"
-                  onClick={handleCreateAccount}
-                  isLoading={isCreatingAccount}
-                  loadingText="Creating..."
-                >
-                  Create New Account
-                </Button>
-              </VStack>
+              <Button
+                colorScheme="orange"
+                size="lg"
+                w="100%"
+                onClick={handleCreateAccount}
+                isLoading={isCreatingAccount}
+                loadingText="Creating..."
+              >
+                Create New Account
+              </Button>
             </CardBody>
           </Card>
 
@@ -386,16 +363,10 @@ function App() {
             <Divider />
           </HStack>
 
-          {/* Sign In Card */}
+          {/* Sign In */}
           <Card w="100%">
-            <CardHeader>
-              <Heading size="md">Sign In</Heading>
-            </CardHeader>
             <CardBody>
               <VStack spacing={4}>
-                <Text fontSize="sm" color="gray.500">
-                  Enter your existing Nostr private key (nsec)
-                </Text>
                 <Input
                   placeholder="nsec1..."
                   value={nsecInput}
@@ -432,36 +403,31 @@ function App() {
       <VStack spacing={6}>
         {/* Header */}
         <Flex w="100%" justify="space-between" align="center">
-          <Heading size="lg">Bitcoin Wallet</Heading>
-          <Button size="sm" variant="ghost" onClick={handleLogout}>
-            Logout
-          </Button>
+          <HStack spacing={2}>
+            <Heading size="lg">Bitcoin Wallet</Heading>
+            <Badge colorScheme={isConnected ? "green" : "red"}>
+              {isConnected ? "Connected" : "Disconnected"}
+            </Badge>
+          </HStack>
+          <IconButton
+            icon={<HamburgerIcon />}
+            variant="ghost"
+            onClick={onDrawerOpen}
+            aria-label="Open menu"
+          />
         </Flex>
 
-        {/* User Info */}
-        <Card w="100%">
-          <CardBody>
-            <VStack spacing={2} align="start">
-              <Text fontSize="sm" color="gray.500">
-                Your Public Key (npub)
-              </Text>
-              <HStack w="100%">
-                <Text fontSize="xs" isTruncated flex={1}>
-                  {nostrPubKey}
-                </Text>
-                <IconButton
-                  size="sm"
-                  icon={copied ? <CheckIcon /> : <CopyIcon />}
-                  onClick={() => copyToClipboard(nostrPubKey, "npub")}
-                  aria-label="Copy npub"
-                />
-              </HStack>
-              <Badge colorScheme={isConnected ? "green" : "red"}>
-                {isConnected ? "Connected" : "Disconnected"}
-              </Badge>
-            </VStack>
-          </CardBody>
-        </Card>
+        {/* Menu Drawer */}
+        <MenuDrawer
+          isOpen={isDrawerOpen}
+          onClose={onDrawerClose}
+          npub={nostrPubKey}
+          nsec={nostrPrivKey}
+          onLogout={() => {
+            onDrawerClose();
+            handleLogout();
+          }}
+        />
 
         {/* Balance Card */}
         <Card w="100%" bg="orange.50">
@@ -508,30 +474,20 @@ function App() {
               </CardHeader>
               <CardBody>
                 <VStack spacing={4}>
-                  <HStack w="100%">
-                    <Input
-                      type="number"
-                      value={depositAmount}
-                      onChange={(e) => setDepositAmount(e.target.value)}
-                      placeholder="Amount in sats"
-                      min={1}
-                    />
-                    <Button
-                      colorScheme="green"
-                      onClick={handleDeposit}
-                      isLoading={isDepositing}
-                      loadingText="..."
-                    >
-                      Deposit
-                    </Button>
-                  </HStack>
+                  <Button
+                    colorScheme="green"
+                    size="lg"
+                    w="100%"
+                    onClick={handleDeposit}
+                    isLoading={isDepositing}
+                    loadingText="..."
+                  >
+                    Deposit 10 sats
+                  </Button>
 
                   {/* QR Code and Invoice */}
                   {invoice && (
                     <VStack spacing={4} w="100%" pt={4}>
-                      <Text fontSize="sm" color="gray.500">
-                        Scan QR code or copy invoice
-                      </Text>
                       <Box
                         p={4}
                         bg="white"
@@ -541,29 +497,16 @@ function App() {
                       >
                         <QRCodeSVG value={invoice} size={200} />
                       </Box>
-                      <VStack w="100%" spacing={2}>
-                        <Text
-                          fontSize="xs"
-                          wordBreak="break-all"
-                          bg="gray.100"
-                          p={2}
-                          borderRadius="md"
-                          maxH="100px"
-                          overflow="auto"
-                        >
-                          {invoice}
-                        </Text>
-                        <Button
-                          size="sm"
-                          leftIcon={
-                            copiedInvoice ? <CheckIcon /> : <CopyIcon />
-                          }
-                          onClick={() => copyToClipboard(invoice, "invoice")}
-                          variant="outline"
-                        >
-                          {copiedInvoice ? "Copied!" : "Copy Invoice"}
-                        </Button>
-                      </VStack>
+                      <Button
+                        leftIcon={
+                          copiedInvoice ? <CheckIcon /> : <CopyIcon />
+                        }
+                        onClick={() => copyInvoice(invoice)}
+                        variant="outline"
+                        w="100%"
+                      >
+                        {copiedInvoice ? "Copied!" : "Copy Invoice"}
+                      </Button>
                     </VStack>
                   )}
                 </VStack>
@@ -577,9 +520,6 @@ function App() {
               </CardHeader>
               <CardBody>
                 <VStack spacing={4}>
-                  <Text fontSize="sm" color="gray.500">
-                    Send 1 sat to the default recipient
-                  </Text>
                   <Button
                     colorScheme="blue"
                     size="lg"
@@ -591,6 +531,14 @@ function App() {
                   >
                     Send 1 Sat
                   </Button>
+                  <Link
+                    href="https://nutlife.lol"
+                    isExternal
+                    color="orange.500"
+                    fontSize="sm"
+                  >
+                    Verify transactions on nutlife.lol <ExternalLinkIcon mx="2px" />
+                  </Link>
                 </VStack>
               </CardBody>
             </Card>
