@@ -103,6 +103,17 @@ function App() {
     return Number.isFinite(numeric) ? numeric : 0;
   }, [walletBalance]);
 
+  // Handle logout
+  const handleLogout = () => {
+    logout();
+    resetState();
+    toast({
+      title: "Logged out",
+      status: "info",
+      duration: 2000,
+    });
+  };
+
   // Handle create account
   const handleCreateAccount = async () => {
     setIsCreatingAccount(true);
@@ -182,17 +193,6 @@ function App() {
     } finally {
       setIsSigningIn(false);
     }
-  };
-
-  // Handle logout
-  const handleLogout = () => {
-    logout();
-    resetState();
-    toast({
-      title: "Logged out",
-      status: "info",
-      duration: 2000,
-    });
   };
 
   // Handle create wallet
