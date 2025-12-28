@@ -81,6 +81,7 @@ if (typeof window !== "undefined") {
  */
 const DEFAULT_MINT = "https://mint.minibits.cash/Bitcoin";
 
+const DEFAULT_WALLET_ID = "Robots Building Education Wallet";
 /**
  * Default Nostr relays for publishing and fetching wallet events.
  * Multiple relays provide redundancy and better message propagation.
@@ -430,7 +431,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       const pk = signer.privateKey;
       const wallet = new NDKCashuWallet(ndkInstance);
       wallet.mints = [DEFAULT_MINT];
-      wallet.walletId = "Robots Building Education Wallet";
+      wallet.walletId = DEFAULT_WALLET_ID;
 
       // Attach the private key for decrypting stored proofs
       // Proofs are encrypted before being stored on relays
@@ -525,7 +526,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       wallet.mints = [DEFAULT_MINT];
       wallet.privkey = pk;
       wallet.signer = new NDKPrivateKeySigner(pk);
-      wallet.walletId = "Robots Building Education Wallet";
+      wallet.walletId = DEFAULT_WALLET_ID;
 
       ndkInstance.wallet = wallet;
 
