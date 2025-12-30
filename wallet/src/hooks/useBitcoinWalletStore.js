@@ -155,7 +155,6 @@ function decodeKey(key) {
     const { words } = bech32.decode(key);
     return Buffer.from(bech32.fromWords(words)).toString("hex");
   } catch (e) {
-    console.error("Error decoding key:", e);
     return null;
   }
 }
@@ -187,7 +186,6 @@ function decodeKey(key) {
 async function verifyBalanceWithMint(wallet, mintUrl) {
   try {
     const proofs = wallet.state?.getProofs({ mint: mintUrl }) || [];
-    console.log("[Wallet] Proofs from state:", proofs.length);
 
     if (proofs.length === 0) {
       return 0;
@@ -202,10 +200,8 @@ async function verifyBalanceWithMint(wallet, mintUrl) {
     });
 
     const balance = unspentProofs.reduce((sum, p) => sum + p.amount, 0);
-    console.log("[Wallet] Verified balance from mint:", balance);
     return balance;
   } catch (e) {
-    console.error("[Wallet] Error verifying with mint:", e);
     return extractBalance(wallet.balance);
   }
 }
@@ -299,23 +295,18 @@ export const useBitcoinWalletStore = create((set, get) => ({
   startNutzapMonitor: async () => {
     const { ndkInstance, signer, cashuWallet, verifyAndUpdateBalance } = get();
 
-    console.log("[Wallet] Starting nutzap monitor...");
-
     if (!ndkInstance || !signer || !cashuWallet) {
-      console.error("[Wallet] Cannot start monitor - wallet not ready");
       return null;
     }
 
     // Prevent duplicate monitors
     const { nutzapMonitor: existingMonitor } = get();
     if (existingMonitor) {
-      console.log("[Wallet] Monitor already running, skipping...");
       return existingMonitor;
     }
 
     try {
       const user = await signer.user();
-      console.log("[Wallet] Monitoring for nutzaps to:", user.pubkey);
 
       const monitor = new NDKNutzapMonitor(ndkInstance, user, {});
       monitor.wallet = cashuWallet;
@@ -323,41 +314,27 @@ export const useBitcoinWalletStore = create((set, get) => ({
       if (signer.privateKey) {
         const privkeySigner = new NDKPrivateKeySigner(signer.privateKey);
         await monitor.addPrivkey(privkeySigner);
-        console.log("[Wallet] Added privkey to monitor");
-      } else {
-        console.warn("[Wallet] No privkey available for monitor");
       }
 
       monitor.on("redeemed", async (nutzaps, amount) => {
-        console.log("[Wallet] ✅ Redeemed nutzaps!", amount, "sats");
         await verifyAndUpdateBalance();
       });
 
-      monitor.on("seen", (nutzap) => {
-        console.log("[Wallet] 👀 Incoming nutzap seen:", nutzap.id);
-      });
+      monitor.on("seen", (nutzap) => {});
 
-      monitor.on("failed", (nutzap, error) => {
-        console.error("[Wallet] ❌ Failed to redeem nutzap:", error);
-      });
+      monitor.on("failed", (nutzap, error) => {});
 
-      monitor.on("seen_in_unknown_mint", (nutzap) => {
-        console.warn("[Wallet] ⚠️ Nutzap from unknown mint:", nutzap.mint);
-      });
+      monitor.on("seen_in_unknown_mint", (nutzap) => {});
 
       // Add this to track state changes
-      monitor.on("state_changed", (nutzapId, state) => {
-        console.log("[Wallet] 📊 Nutzap state changed:", nutzapId, state);
-      });
+      monitor.on("state_changed", (nutzapId, state) => {});
 
       await monitor.start({});
-      console.log("[Wallet] ✅ Nutzap monitor started successfully");
 
       set({ nutzapMonitor: monitor });
 
       return monitor;
     } catch (err) {
-      console.error("[Wallet] Error starting nutzap monitor:", err);
       return null;
     }
   },
@@ -366,7 +343,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
     const { ndkInstance, signer, cashuWallet, verifyAndUpdateBalance } = get();
 
     if (!ndkInstance || !signer || !cashuWallet) {
-      console.log("[Debug] Not ready");
       return;
     }
 
@@ -378,26 +354,15 @@ export const useBitcoinWalletStore = create((set, get) => ({
       limit: 5,
     });
 
-    console.log("[Debug] Found nutzap events:", events.size);
-
     const { NDKNutzap } = await import("@nostr-dev-kit/ndk");
 
     for (const event of events) {
-      console.log("[Debug] Nutzap event:", event.id);
-
       try {
         const nutzap = await NDKNutzap.from(event);
 
         if (!nutzap) {
-          console.log("[Debug] Could not parse nutzap");
           continue;
         }
-
-        console.log("[Debug] Parsed nutzap:", {
-          amount: nutzap.amount,
-          mint: nutzap.mint,
-          proofs: nutzap.proofs,
-        });
 
         const cashuWalletInstance = await cashuWallet.getCashuWallet(
           nutzap.mint
@@ -405,16 +370,12 @@ export const useBitcoinWalletStore = create((set, get) => ({
         const proofStates = await cashuWalletInstance.checkProofsStates(
           nutzap.proofs
         );
-        console.log("[Debug] Proof states:", proofStates);
 
         const hasUnspent = proofStates.some((s) => s.state === "UNSPENT");
 
         if (!hasUnspent) {
-          console.log("[Debug] All proofs already spent, skipping");
           continue;
         }
-
-        console.log("[Debug] Found unspent proofs, attempting to redeem...");
 
         const unspentProofs = nutzap.proofs.filter(
           (_, i) => proofStates[i]?.state === "UNSPENT"
@@ -424,7 +385,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
           let privkeyHex = signer.privateKey;
 
           if (!privkeyHex) {
-            console.error("[Debug] No private key available for redemption");
             continue;
           }
 
@@ -436,17 +396,11 @@ export const useBitcoinWalletStore = create((set, get) => ({
           // But Cashu expects a 33-byte compressed pubkey with 02/03 prefix
           // Let's add the "02" prefix to make it a compressed pubkey
           const p2pkPubkey = nutzap.p2pk;
-          console.log("[Debug] P2PK pubkey from nutzap:", p2pkPubkey);
-          console.log("[Debug] P2PK pubkey length:", p2pkPubkey?.length);
-          console.log("[Debug] Privkey hex length:", privkeyHex.length);
 
           // Try using getPublicKey from @noble/secp256k1 (should be a dependency of cashu-ts)
           const secp = await import("@noble/secp256k1");
           const pubkeyBytes = secp.getPublicKey(privkeyHex, true); // true = compressed
           const pubkeyHex = Buffer.from(pubkeyBytes).toString("hex");
-
-          console.log("[Debug] Derived compressed pubkey:", pubkeyHex);
-          console.log("[Debug] Derived pubkey length:", pubkeyHex.length);
 
           // Now use this properly formatted privkey
           const amount = await cashuWallet.redeemNutzaps([nutzap], privkeyHex, {
@@ -455,17 +409,9 @@ export const useBitcoinWalletStore = create((set, get) => ({
             cashuWallet: cashuWalletInstance,
           });
 
-          console.log("[Debug] ✅ Redeemed amount:", amount);
-
           await verifyAndUpdateBalance();
-          console.log("[Debug] ✅ Balance updated!");
-        } catch (redeemErr) {
-          console.error("[Debug] Error redeeming:", redeemErr);
-          console.error("[Debug] Error details:", redeemErr.message);
-        }
-      } catch (e) {
-        console.error("[Debug] Error processing nutzap:", e);
-      }
+        } catch (redeemErr) {}
+      } catch (e) {}
     }
   },
 
@@ -481,7 +427,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
     if (nutzapMonitor) {
       nutzapMonitor.stop();
       set({ nutzapMonitor: null });
-      console.log("[Wallet] Nutzap monitor stopped");
     }
   },
 
@@ -524,7 +469,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       // Handle private key mode
       if (!nsec || !nsec.startsWith("nsec")) {
-        console.error("[Wallet] No valid nsec provided");
         return null;
       }
 
@@ -540,7 +484,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
       set({ isConnected: true, ndkInstance, signer });
       return { ndkInstance, signer };
     } catch (err) {
-      console.error("[Wallet] Error connecting to Nostr:", err);
       setError(err.message);
       return null;
     }
@@ -617,13 +560,11 @@ export const useBitcoinWalletStore = create((set, get) => ({
     }
 
     if (!ndkInstance || !signer) {
-      console.error("[Wallet] NDK not ready");
       return null;
     }
 
     try {
       const user = await signer.user();
-      console.log("[Wallet] Looking for wallet for pubkey:", user.pubkey);
 
       // Check for wallet events - try multiple possible kinds
       // These are NIP-60 defined event kinds for Cashu wallets
@@ -633,15 +574,9 @@ export const useBitcoinWalletStore = create((set, get) => ({
         limit: 5,
       });
 
-      console.log("[Wallet] Found events:", walletEvents.size);
-      walletEvents.forEach((e) => console.log("[Wallet] Event kind:", e.kind));
-
       if (walletEvents.size === 0) {
-        console.log("[Wallet] No existing wallet found");
         return null;
       }
-
-      console.log("[Wallet] Found existing wallet, loading...");
 
       const pk = signer.privateKey;
       const wallet = new NDKCashuWallet(ndkInstance);
@@ -660,13 +595,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
       // Start the wallet - this fetches and decrypts stored proofs
       await wallet.start({ pubkey: user.pubkey });
 
-      console.log("[Wallet] Wallet status:", wallet.status);
-      console.log("[Wallet] Wallet relaySet:", wallet.relaySet);
-
       // Listen for balance changes from the wallet
       wallet.on("balance_updated", (balance) => {
-        console.log("[Wallet] >>> BALANCE EVENT FIRED:", balance);
-        console.log("[Wallet] Balance updated event:", balance);
         if (balance?.amount !== undefined) {
           set({ walletBalance: balance.amount });
         } else {
@@ -676,14 +606,10 @@ export const useBitcoinWalletStore = create((set, get) => ({
       });
 
       wallet.on("ready", () => {
-        console.log("[Wallet] Wallet ready event");
         verifyAndUpdateBalance();
       });
 
-      wallet.on("warning", (warning) => {
-        console.warn("[Wallet] Warning:", warning.msg);
-      });
-      console.log("[Wallet] Wallet loaded, status:", wallet.status);
+      wallet.on("warning", (warning) => {});
 
       set({ cashuWallet: wallet, isWalletReady: true });
 
@@ -692,7 +618,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       return wallet;
     } catch (err) {
-      console.error("[Wallet] Error loading wallet:", err);
       setError(err.message);
       return null;
     }
@@ -728,7 +653,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
     const { ndkInstance, signer, setError, verifyAndUpdateBalance } = get();
 
     if (!ndkInstance || !signer) {
-      console.error("[Wallet] NDK not ready");
       return null;
     }
 
@@ -747,16 +671,12 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       const user = await signer.user();
       await wallet.start({ pubkey: user.pubkey });
-      console.log("[Wallet] Wallet started");
 
       // Attempt to publish wallet to relays for multi-device sync
       // Non-critical: wallet works locally even if publish fails
       try {
         await wallet.publish();
-        console.log("[Wallet] Wallet published to relays");
-      } catch (pubErr) {
-        console.warn("[Wallet] Could not publish (non-critical):", pubErr);
-      }
+      } catch (pubErr) {}
 
       set({
         cashuWallet: wallet,
@@ -768,7 +688,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       return wallet;
     } catch (err) {
-      console.error("[Wallet] Error creating wallet:", err);
       setError(err.message);
       set({ isCreatingWallet: false });
       return null;
@@ -844,7 +763,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       return { mints, p2pkPubkey, relays };
     } catch (e) {
-      console.error("[Wallet] Error fetching payment info:", e);
       return { mints: [DEFAULT_MINT], p2pkPubkey: hexNpub, relays: [] };
     }
   },
@@ -895,8 +813,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       // Handle successful payment - proofs are minted
       deposit.on("success", async (token) => {
-        console.log("[Wallet] Deposit successful!", token.proofs);
-
         // Save proofs to relay for backup and multi-device sync
         await cashuWallet.state.update({
           store: token.proofs,
@@ -914,7 +830,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       // Handle payment failure or timeout
       deposit.on("error", (e) => {
-        console.error("[Wallet] Deposit error:", e);
         setError(e.message || "Deposit failed");
         setInvoice("");
         if (typeof onError === "function") {
@@ -924,11 +839,9 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       // Start the deposit - returns the Lightning invoice
       const pr = await deposit.start();
-      console.log("[Wallet] Invoice created");
       setInvoice(pr);
       return pr;
     } catch (e) {
-      console.error("[Wallet] Error initiating deposit:", e);
       setError(e.message);
       return null;
     }
@@ -1001,12 +914,10 @@ export const useBitcoinWalletStore = create((set, get) => ({
     const MAX_RETRIES = 2;
 
     if (!cashuWallet) {
-      console.error("[Wallet] Wallet not initialized");
       return false;
     }
 
     if (walletBalance < 1) {
-      console.error("[Wallet] Insufficient balance:", walletBalance);
       return false;
     }
 
@@ -1016,7 +927,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
     const freshWallet = get().cashuWallet;
 
     if (!freshWallet) {
-      console.error("[Wallet] Wallet not available after refresh");
       return false;
     }
 
@@ -1027,10 +937,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
       // Get recipient's P2PK pubkey for locking proofs
       const { p2pkPubkey } = await fetchUserPaymentInfo(recipientNpub);
       const compressedPubkey = nostrPubkeyToCompressed(p2pkPubkey);
-
-      console.log("[Wallet] P2PK pubkey:", p2pkPubkey);
-      console.log("[Wallet] P2PK pubkey length:", p2pkPubkey?.length);
-      console.log("[Wallet] Sending 1 sat to:", recipientNpub);
 
       const cashuWalletInstance = await freshWallet.getCashuWallet(
         DEFAULT_MINT
@@ -1051,9 +957,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
         const state = proofStates[index];
         return state?.state === "UNSPENT";
       });
-
-      console.log("[Wallet] Total proofs:", proofs.length);
-      console.log("[Wallet] Valid proofs:", validProofs.length);
 
       if (validProofs.length === 0) {
         throw new Error("No valid proofs available");
@@ -1076,9 +979,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
           pubkey: compressedPubkey,
         }
       );
-
-      console.log("[Wallet] Keep proofs:", keep);
-      console.log("[Wallet] Send proofs:", send);
 
       // Update wallet state: store change, destroy originals
       // Destroying ALL proofs (not just valid) cleans up stale state
@@ -1107,15 +1007,12 @@ export const useBitcoinWalletStore = create((set, get) => ({
       // Sign and publish the nutzap to Nostr relays
       await nutzapEvent.sign(signer);
       await nutzapEvent.publish();
-      console.log("[Wallet] Nutzap published!");
 
       // Update displayed balance
       await verifyAndUpdateBalance();
 
       return true;
     } catch (e) {
-      console.error("[Wallet] Error sending nutzap:", e);
-
       // Retry on spent proof errors (likely stale state)
       const isSpentError =
         e.message?.toLowerCase().includes("already spent") ||
@@ -1123,9 +1020,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
         e.message?.toLowerCase().includes("insufficient valid");
 
       if (isSpentError && retryCount < MAX_RETRIES) {
-        console.log(
-          `[Wallet] Retrying... attempt ${retryCount + 1}/${MAX_RETRIES}`
-        );
         await new Promise((resolve) => setTimeout(resolve, 500));
         return get().send(recipientNpub, retryCount + 1);
       }

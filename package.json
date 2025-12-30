@@ -1,5 +1,0 @@
-{
-  "dependencies": {
-    "@noble/secp256k1": "^3.0.0"
-  }
-}

@@ -7,6 +7,7 @@ This is a template for users to
    - Create a wallet
    - Deposit
    - send money to a recipient
+   - receive/redeem tokens
 
 - [Run Application Instructions](#run-application)
 

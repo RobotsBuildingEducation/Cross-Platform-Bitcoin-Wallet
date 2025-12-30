@@ -489,17 +489,6 @@ function App() {
               <CardBody>
                 <VStack spacing={4}>
                   <Button
-                    colorScheme="purple"
-                    size="sm"
-                    onClick={async () => {
-                      const { debugRedeemNutzap } =
-                        useBitcoinWalletStore.getState();
-                      await debugRedeemNutzap();
-                    }}
-                  >
-                    redeem Nutzaps
-                  </Button>
-                  <Button
                     colorScheme="green"
                     size="lg"
                     w="fit-content"
