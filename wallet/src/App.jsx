@@ -54,6 +54,8 @@ function App() {
   );
   const isWalletReady = useBitcoinWalletStore((state) => state.isWalletReady);
   const walletError = useBitcoinWalletStore((state) => state.errorMessage);
+  const walletEvents = useBitcoinWalletStore((state) => state.walletEvents);
+  const selectedWalletId = useBitcoinWalletStore((state) => state.selectedWalletId);
 
   // Wallet store actions
   const {
@@ -64,11 +66,13 @@ function App() {
     send,
     resetState,
     verifyAndUpdateBalance,
+    switchWallet,
   } = useBitcoinWalletStore.getState();
 
   // Local state
   const [hydrating, setHydrating] = useState(true);
   const [nsecInput, setNsecInput] = useState("");
+  const [isSwitchingWallet, setIsSwitchingWallet] = useState(false);
   const [isDepositing, setIsDepositing] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [copiedInvoice, setCopiedInvoice] = useState(false);
@@ -443,6 +447,85 @@ function App() {
             </Center>
           </CardBody>
         </Card>
+
+        {/* Wallet List */}
+        {walletEvents.filter((e) => e.kind === 37513).length > 0 && (
+          <Card w="100%">
+            <CardHeader pb={2}>
+              <HStack justify="space-between">
+                <Heading size="md">Your Wallets</Heading>
+                {isSwitchingWallet && <Spinner size="sm" color="orange.500" />}
+              </HStack>
+            </CardHeader>
+            <CardBody pt={0}>
+              <VStack spacing={3} align="stretch">
+                {walletEvents
+                  .filter((e) => e.kind === 37513)
+                  .map((wallet, index) => {
+                    const isSelected = selectedWalletId === wallet.walletId;
+                    return (
+                      <Box
+                        key={wallet.id || index}
+                        p={4}
+                        borderWidth="2px"
+                        borderRadius="lg"
+                        borderColor={isSelected ? "orange.400" : "gray.200"}
+                        bg={isSelected ? "orange.50" : "white"}
+                        cursor="pointer"
+                        transition="all 0.2s"
+                        _hover={{
+                          borderColor: isSelected ? "orange.500" : "orange.300",
+                          transform: "translateY(-2px)",
+                          shadow: "md",
+                        }}
+                        onClick={async () => {
+                          if (!isSelected && !isSwitchingWallet) {
+                            setIsSwitchingWallet(true);
+                            await switchWallet(wallet.walletId);
+                            setIsSwitchingWallet(false);
+                            toast({
+                              title: `Switched to ${wallet.walletId}`,
+                              status: "success",
+                              duration: 2000,
+                            });
+                          }
+                        }}
+                      >
+                        <HStack justify="space-between" mb={2}>
+                          <HStack spacing={3}>
+                            <Box
+                              w="10px"
+                              h="10px"
+                              borderRadius="full"
+                              bg={isSelected ? "green.400" : "gray.300"}
+                            />
+                            <Text fontWeight="bold" fontSize="md">
+                              {wallet.walletId}
+                            </Text>
+                          </HStack>
+                          {isSelected && (
+                            <Badge colorScheme="green" variant="solid">
+                              Active
+                            </Badge>
+                          )}
+                        </HStack>
+                        {wallet.mints.length > 0 && (
+                          <Text fontSize="xs" color="gray.500" ml={5} isTruncated>
+                            {wallet.mints[0]}
+                          </Text>
+                        )}
+                        {wallet.createdAt && (
+                          <Text fontSize="xs" color="gray.400" ml={5} mt={1}>
+                            Created {new Date(wallet.createdAt * 1000).toLocaleDateString()}
+                          </Text>
+                        )}
+                      </Box>
+                    );
+                  })}
+              </VStack>
+            </CardBody>
+          </Card>
+        )}
 
         {/* Create Wallet (if no wallet exists) */}
         {!isWalletReady && !cashuWallet && (

@@ -220,6 +220,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
   invoice: "", // Current Lightning invoice for deposits
   isCreatingWallet: false, // Loading state during wallet creation
   isWalletReady: false, // Whether wallet is initialized and ready
+  walletEvents: [], // Array of wallet events from Nostr
+  selectedWalletId: null, // Currently selected wallet ID
 
   // ============================================================
   // BASIC SETTERS
@@ -268,6 +270,74 @@ export const useBitcoinWalletStore = create((set, get) => ({
     const balance = await verifyBalanceWithMint(cashuWallet, DEFAULT_MINT);
     set({ walletBalance: balance });
     return balance;
+  },
+
+  /**
+   * Switch to a Different Wallet
+   *
+   * Loads a different wallet by its ID, updating the balance and state.
+   *
+   * @param {string} walletId - The wallet ID to switch to
+   * @returns {NDKCashuWallet|null} The loaded wallet or null on error
+   */
+  switchWallet: async (walletId) => {
+    const { ndkInstance, signer, cashuWallet, setError } = get();
+
+    // Clean up existing wallet
+    if (cashuWallet) {
+      cashuWallet.removeAllListeners();
+    }
+
+    if (!ndkInstance || !signer) {
+      console.error("[Wallet] NDK not ready");
+      return null;
+    }
+
+    try {
+      console.log("[Wallet] Switching to wallet:", walletId);
+      const pk = signer.privateKey;
+      const user = await signer.user();
+
+      const wallet = new NDKCashuWallet(ndkInstance);
+      wallet.mints = [DEFAULT_MINT];
+      wallet.walletId = walletId;
+
+      if (pk) {
+        wallet.privkey = pk;
+        wallet.signer = new NDKPrivateKeySigner(pk);
+      }
+
+      ndkInstance.wallet = wallet;
+      await wallet.start({ pubkey: user.pubkey });
+
+      // Set up event listeners
+      wallet.on("balance_updated", (balance) => {
+        if (balance?.amount !== undefined) {
+          set({ walletBalance: balance.amount });
+        }
+      });
+
+      wallet.on("ready", () => {
+        get().verifyAndUpdateBalance();
+      });
+
+      set({
+        cashuWallet: wallet,
+        isWalletReady: true,
+        selectedWalletId: walletId,
+      });
+
+      // Verify balance
+      const balance = await verifyBalanceWithMint(wallet, DEFAULT_MINT);
+      set({ walletBalance: balance });
+
+      console.log("[Wallet] Switched to wallet:", walletId, "Balance:", balance);
+      return wallet;
+    } catch (err) {
+      console.error("[Wallet] Error switching wallet:", err);
+      setError(err.message);
+      return null;
+    }
   },
 
   // ============================================================
@@ -426,6 +496,27 @@ export const useBitcoinWalletStore = create((set, get) => ({
         return null;
       }
 
+      // Map wallet events to a usable format and store in state
+      const walletEventsArray = Array.from(walletEvents).map((event) => ({
+        id: event.id,
+        kind: event.kind,
+        pubkey: event.pubkey,
+        createdAt: event.created_at,
+        content: event.content,
+        tags: event.tags,
+        walletId: event.tags.find((t) => t[0] === "d")?.[1] || "Unknown Wallet",
+        mints: event.tags.filter((t) => t[0] === "mint").map((t) => t[1]),
+        kindLabel:
+          event.kind === 37513
+            ? "Wallet"
+            : event.kind === 7374
+              ? "Token"
+              : event.kind === 7375
+                ? "Proof"
+                : "Unknown",
+      }));
+
+      set({ walletEvents: walletEventsArray });
       console.log("[Wallet] Found existing wallet, loading...");
 
       const pk = signer.privateKey;
@@ -470,7 +561,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       });
       console.log("[Wallet] Wallet loaded, status:", wallet.status);
 
-      set({ cashuWallet: wallet, isWalletReady: true });
+      set({ cashuWallet: wallet, isWalletReady: true, selectedWalletId: DEFAULT_WALLET_ID });
 
       // Verify balance with mint (proofs might have been spent elsewhere)
       await verifyAndUpdateBalance();
@@ -955,6 +1046,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
       invoice: "",
       isCreatingWallet: false,
       isWalletReady: false,
+      walletEvents: [],
+      selectedWalletId: null,
     });
   },
 }));
