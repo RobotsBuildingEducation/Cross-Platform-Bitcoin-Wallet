@@ -451,6 +451,7 @@ function App() {
         </Card>
 
         {/* Wallet List */}
+        {console.log("[App] walletEvents:", walletEvents.length, walletEvents)}
         {walletEvents.length > 0 && (
           <Card w="100%">
             <CardHeader pb={2}>
