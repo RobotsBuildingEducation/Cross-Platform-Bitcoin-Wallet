@@ -285,7 +285,9 @@ export const useBitcoinWalletStore = create((set, get) => ({
    * @returns {Array} Array of wallet events
    */
   fetchWalletEvents: async () => {
+    console.log("[Wallet] fetchWalletEvents called");
     const { ndkInstance, signer } = get();
+    console.log("[Wallet] ndkInstance:", !!ndkInstance, "signer:", !!signer);
 
     if (!ndkInstance || !signer) {
       console.error("[Wallet] NDK not ready for fetching wallet events");
@@ -301,6 +303,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
         kinds: [37513, 7374, 7375],
         authors: [user.pubkey],
       });
+
+      console.log("[Wallet] Raw events fetched:", events.size);
 
       const walletEventsArray = Array.from(events).map((event) => ({
         id: event.id,
@@ -325,7 +329,9 @@ export const useBitcoinWalletStore = create((set, get) => ({
       }));
 
       console.log("[Wallet] Found wallet events:", walletEventsArray.length);
+      console.log("[Wallet] Setting walletEvents state...");
       set({ walletEvents: walletEventsArray });
+      console.log("[Wallet] State set, verifying:", get().walletEvents.length);
       return walletEventsArray;
     } catch (err) {
       console.error("[Wallet] Error fetching wallet events:", err);
