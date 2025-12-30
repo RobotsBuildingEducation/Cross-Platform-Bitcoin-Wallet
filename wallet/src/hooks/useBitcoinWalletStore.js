@@ -271,74 +271,6 @@ export const useBitcoinWalletStore = create((set, get) => ({
     return balance;
   },
 
-  /**
-   * Fetch All Wallet Events from Nostr
-   *
-   * Retrieves all wallet-related events for the current user.
-   * This allows displaying multiple wallets that may exist under one nsec.
-   *
-   * Event kinds:
-   * - 37513: Wallet metadata and configuration
-   * - 7374: Token events (encrypted proofs)
-   * - 7375: Proof events (individual proof storage)
-   *
-   * @returns {Array} Array of wallet events
-   */
-  fetchWalletEvents: async () => {
-    console.log("[Wallet] fetchWalletEvents called");
-    const { ndkInstance, signer } = get();
-    console.log("[Wallet] ndkInstance:", !!ndkInstance, "signer:", !!signer);
-
-    if (!ndkInstance || !signer) {
-      console.error("[Wallet] NDK not ready for fetching wallet events");
-      return [];
-    }
-
-    try {
-      const user = await signer.user();
-      console.log("[Wallet] Fetching wallet events for pubkey:", user.pubkey);
-
-      // Fetch all wallet-related events (wallet, token, and proof kinds)
-      const events = await ndkInstance.fetchEvents({
-        kinds: [37513, 7374, 7375],
-        authors: [user.pubkey],
-      });
-
-      console.log("[Wallet] Raw events fetched:", events.size);
-
-      const walletEventsArray = Array.from(events).map((event) => ({
-        id: event.id,
-        kind: event.kind,
-        pubkey: event.pubkey,
-        createdAt: event.created_at,
-        content: event.content,
-        tags: event.tags,
-        // Extract wallet ID from 'd' tag if present
-        walletId: event.tags.find((t) => t[0] === "d")?.[1] || "Unknown Wallet",
-        // Extract mint URLs from 'mint' tags
-        mints: event.tags.filter((t) => t[0] === "mint").map((t) => t[1]),
-        // Get event kind label
-        kindLabel:
-          event.kind === 37513
-            ? "Wallet"
-            : event.kind === 7374
-              ? "Token"
-              : event.kind === 7375
-                ? "Proof"
-                : "Unknown",
-      }));
-
-      console.log("[Wallet] Found wallet events:", walletEventsArray.length);
-      console.log("[Wallet] Setting walletEvents state...");
-      set({ walletEvents: walletEventsArray });
-      console.log("[Wallet] State set, verifying:", get().walletEvents.length);
-      return walletEventsArray;
-    } catch (err) {
-      console.error("[Wallet] Error fetching wallet events:", err);
-      return [];
-    }
-  },
-
   // ============================================================
   // CONNECTION FUNCTIONS
   // ============================================================
@@ -495,6 +427,27 @@ export const useBitcoinWalletStore = create((set, get) => ({
         return null;
       }
 
+      // Map wallet events to a usable format and store in state
+      const walletEventsArray = Array.from(walletEvents).map((event) => ({
+        id: event.id,
+        kind: event.kind,
+        pubkey: event.pubkey,
+        createdAt: event.created_at,
+        content: event.content,
+        tags: event.tags,
+        walletId: event.tags.find((t) => t[0] === "d")?.[1] || "Unknown Wallet",
+        mints: event.tags.filter((t) => t[0] === "mint").map((t) => t[1]),
+        kindLabel:
+          event.kind === 37513
+            ? "Wallet"
+            : event.kind === 7374
+              ? "Token"
+              : event.kind === 7375
+                ? "Proof"
+                : "Unknown",
+      }));
+
+      set({ walletEvents: walletEventsArray });
       console.log("[Wallet] Found existing wallet, loading...");
 
       const pk = signer.privateKey;

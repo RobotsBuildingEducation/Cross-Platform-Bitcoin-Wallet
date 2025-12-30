@@ -65,7 +65,6 @@ function App() {
     send,
     resetState,
     verifyAndUpdateBalance,
-    fetchWalletEvents,
   } = useBitcoinWalletStore.getState();
 
   // Local state
@@ -92,7 +91,6 @@ function App() {
         const connected = await init();
         if (connected) {
           await initWallet();
-          await fetchWalletEvents();
         }
       } catch (e) {
         console.warn("Wallet hydrate failed:", e);
@@ -183,7 +181,6 @@ function App() {
         // Re-initialize wallet connection
         await init();
         await initWallet();
-        await fetchWalletEvents();
       } else {
         toast({
           title: "Sign in failed",
@@ -215,8 +212,6 @@ function App() {
           status: "success",
           duration: 3000,
         });
-        // Refresh wallet list
-        await fetchWalletEvents();
       }
     } catch (err) {
       toast({
@@ -451,7 +446,6 @@ function App() {
         </Card>
 
         {/* Wallet List */}
-        {console.log("[App] walletEvents:", walletEvents.length, walletEvents)}
         {walletEvents.length > 0 && (
           <Card w="100%">
             <CardHeader pb={2}>
