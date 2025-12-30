@@ -454,7 +454,7 @@ function App() {
         {walletEvents.length > 0 && (
           <Card w="100%">
             <CardHeader pb={2}>
-              <Heading size="md">Your Wallets ({walletEvents.length})</Heading>
+              <Heading size="md">Wallet Events ({walletEvents.length})</Heading>
             </CardHeader>
             <CardBody pt={0}>
               <VStack spacing={3} align="stretch">
@@ -469,8 +469,21 @@ function App() {
                   >
                     <HStack justify="space-between" mb={2}>
                       <Text fontWeight="bold">{wallet.walletId}</Text>
-                      <Badge colorScheme="green">Active</Badge>
+                      <Badge
+                        colorScheme={
+                          wallet.kindLabel === "Wallet"
+                            ? "purple"
+                            : wallet.kindLabel === "Token"
+                              ? "blue"
+                              : "green"
+                        }
+                      >
+                        {wallet.kindLabel}
+                      </Badge>
                     </HStack>
+                    <Text fontSize="xs" color="gray.500" mb={1}>
+                      Kind: {wallet.kind}
+                    </Text>
                     {wallet.mints.length > 0 && (
                       <VStack align="start" spacing={1}>
                         <Text fontSize="xs" color="gray.500">

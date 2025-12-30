@@ -274,8 +274,13 @@ export const useBitcoinWalletStore = create((set, get) => ({
   /**
    * Fetch All Wallet Events from Nostr
    *
-   * Retrieves all wallet-related events (kind 37513) for the current user.
+   * Retrieves all wallet-related events for the current user.
    * This allows displaying multiple wallets that may exist under one nsec.
+   *
+   * Event kinds:
+   * - 37513: Wallet metadata and configuration
+   * - 7374: Token events (encrypted proofs)
+   * - 7375: Proof events (individual proof storage)
    *
    * @returns {Array} Array of wallet events
    */
@@ -291,9 +296,9 @@ export const useBitcoinWalletStore = create((set, get) => ({
       const user = await signer.user();
       console.log("[Wallet] Fetching wallet events for pubkey:", user.pubkey);
 
-      // Fetch wallet metadata events (kind 37513)
+      // Fetch all wallet-related events (wallet, token, and proof kinds)
       const events = await ndkInstance.fetchEvents({
-        kinds: [37513],
+        kinds: [37513, 7374, 7375],
         authors: [user.pubkey],
       });
 
@@ -308,6 +313,15 @@ export const useBitcoinWalletStore = create((set, get) => ({
         walletId: event.tags.find((t) => t[0] === "d")?.[1] || "Unknown Wallet",
         // Extract mint URLs from 'mint' tags
         mints: event.tags.filter((t) => t[0] === "mint").map((t) => t[1]),
+        // Get event kind label
+        kindLabel:
+          event.kind === 37513
+            ? "Wallet"
+            : event.kind === 7374
+              ? "Token"
+              : event.kind === 7375
+                ? "Proof"
+                : "Unknown",
       }));
 
       console.log("[Wallet] Found wallet events:", walletEventsArray.length);
