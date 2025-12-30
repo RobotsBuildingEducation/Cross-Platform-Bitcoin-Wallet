@@ -54,6 +54,7 @@ function App() {
   );
   const isWalletReady = useBitcoinWalletStore((state) => state.isWalletReady);
   const walletError = useBitcoinWalletStore((state) => state.errorMessage);
+  const walletEvents = useBitcoinWalletStore((state) => state.walletEvents);
 
   // Wallet store actions
   const {
@@ -64,6 +65,7 @@ function App() {
     send,
     resetState,
     verifyAndUpdateBalance,
+    fetchWalletEvents,
   } = useBitcoinWalletStore.getState();
 
   // Local state
@@ -90,6 +92,7 @@ function App() {
         const connected = await init();
         if (connected) {
           await initWallet();
+          await fetchWalletEvents();
         }
       } catch (e) {
         console.warn("Wallet hydrate failed:", e);
@@ -180,6 +183,7 @@ function App() {
         // Re-initialize wallet connection
         await init();
         await initWallet();
+        await fetchWalletEvents();
       } else {
         toast({
           title: "Sign in failed",
@@ -211,6 +215,8 @@ function App() {
           status: "success",
           duration: 3000,
         });
+        // Refresh wallet list
+        await fetchWalletEvents();
       }
     } catch (err) {
       toast({
@@ -443,6 +449,51 @@ function App() {
             </Center>
           </CardBody>
         </Card>
+
+        {/* Wallet List */}
+        {walletEvents.length > 0 && (
+          <Card w="100%">
+            <CardHeader pb={2}>
+              <Heading size="md">Your Wallets ({walletEvents.length})</Heading>
+            </CardHeader>
+            <CardBody pt={0}>
+              <VStack spacing={3} align="stretch">
+                {walletEvents.map((wallet, index) => (
+                  <Box
+                    key={wallet.id || index}
+                    p={3}
+                    borderWidth="1px"
+                    borderRadius="md"
+                    borderColor="gray.200"
+                    bg="gray.50"
+                  >
+                    <HStack justify="space-between" mb={2}>
+                      <Text fontWeight="bold">{wallet.walletId}</Text>
+                      <Badge colorScheme="green">Active</Badge>
+                    </HStack>
+                    {wallet.mints.length > 0 && (
+                      <VStack align="start" spacing={1}>
+                        <Text fontSize="xs" color="gray.500">
+                          Mints:
+                        </Text>
+                        {wallet.mints.map((mint, i) => (
+                          <Text key={i} fontSize="xs" color="gray.600" isTruncated maxW="100%">
+                            {mint}
+                          </Text>
+                        ))}
+                      </VStack>
+                    )}
+                    {wallet.createdAt && (
+                      <Text fontSize="xs" color="gray.400" mt={2}>
+                        Created: {new Date(wallet.createdAt * 1000).toLocaleDateString()}
+                      </Text>
+                    )}
+                  </Box>
+                ))}
+              </VStack>
+            </CardBody>
+          </Card>
+        )}
 
         {/* Create Wallet (if no wallet exists) */}
         {!isWalletReady && !cashuWallet && (

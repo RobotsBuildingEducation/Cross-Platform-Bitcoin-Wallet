@@ -220,6 +220,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
   invoice: "", // Current Lightning invoice for deposits
   isCreatingWallet: false, // Loading state during wallet creation
   isWalletReady: false, // Whether wallet is initialized and ready
+  walletEvents: [], // Array of wallet events from Nostr (kind 37513)
 
   // ============================================================
   // BASIC SETTERS
@@ -268,6 +269,54 @@ export const useBitcoinWalletStore = create((set, get) => ({
     const balance = await verifyBalanceWithMint(cashuWallet, DEFAULT_MINT);
     set({ walletBalance: balance });
     return balance;
+  },
+
+  /**
+   * Fetch All Wallet Events from Nostr
+   *
+   * Retrieves all wallet-related events (kind 37513) for the current user.
+   * This allows displaying multiple wallets that may exist under one nsec.
+   *
+   * @returns {Array} Array of wallet events
+   */
+  fetchWalletEvents: async () => {
+    const { ndkInstance, signer } = get();
+
+    if (!ndkInstance || !signer) {
+      console.error("[Wallet] NDK not ready for fetching wallet events");
+      return [];
+    }
+
+    try {
+      const user = await signer.user();
+      console.log("[Wallet] Fetching wallet events for pubkey:", user.pubkey);
+
+      // Fetch wallet metadata events (kind 37513)
+      const events = await ndkInstance.fetchEvents({
+        kinds: [37513],
+        authors: [user.pubkey],
+      });
+
+      const walletEventsArray = Array.from(events).map((event) => ({
+        id: event.id,
+        kind: event.kind,
+        pubkey: event.pubkey,
+        createdAt: event.created_at,
+        content: event.content,
+        tags: event.tags,
+        // Extract wallet ID from 'd' tag if present
+        walletId: event.tags.find((t) => t[0] === "d")?.[1] || "Unknown Wallet",
+        // Extract mint URLs from 'mint' tags
+        mints: event.tags.filter((t) => t[0] === "mint").map((t) => t[1]),
+      }));
+
+      console.log("[Wallet] Found wallet events:", walletEventsArray.length);
+      set({ walletEvents: walletEventsArray });
+      return walletEventsArray;
+    } catch (err) {
+      console.error("[Wallet] Error fetching wallet events:", err);
+      return [];
+    }
   },
 
   // ============================================================
@@ -955,6 +1004,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       invoice: "",
       isCreatingWallet: false,
       isWalletReady: false,
+      walletEvents: [],
     });
   },
 }));
