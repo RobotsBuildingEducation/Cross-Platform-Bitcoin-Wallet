@@ -320,18 +320,14 @@ export const useBitcoinWalletStore = create((set, get) => ({
         await verifyAndUpdateBalance();
       });
 
-      monitor.on("seen", (nutzap) => {
-      });
+      monitor.on("seen", (nutzap) => {});
 
-      monitor.on("failed", (nutzap, error) => {
-      });
+      monitor.on("failed", (nutzap, error) => {});
 
-      monitor.on("seen_in_unknown_mint", (nutzap) => {
-      });
+      monitor.on("seen_in_unknown_mint", (nutzap) => {});
 
       // Add this to track state changes
-      monitor.on("state_changed", (nutzapId, state) => {
-      });
+      monitor.on("state_changed", (nutzapId, state) => {});
 
       await monitor.start({});
 
@@ -414,10 +410,8 @@ export const useBitcoinWalletStore = create((set, get) => ({
           });
 
           await verifyAndUpdateBalance();
-        } catch (redeemErr) {
-        }
-      } catch (e) {
-      }
+        } catch (redeemErr) {}
+      } catch (e) {}
     }
   },
 
@@ -615,8 +609,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
         verifyAndUpdateBalance();
       });
 
-      wallet.on("warning", (warning) => {
-      });
+      wallet.on("warning", (warning) => {});
 
       set({ cashuWallet: wallet, isWalletReady: true });
 
@@ -683,8 +676,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       // Non-critical: wallet works locally even if publish fails
       try {
         await wallet.publish();
-      } catch (pubErr) {
-      }
+      } catch (pubErr) {}
 
       set({
         cashuWallet: wallet,
