@@ -64,6 +64,8 @@ function App() {
     send,
     resetState,
     verifyAndUpdateBalance,
+    startNutzapMonitor,
+    stopNutzapMonitor,
   } = useBitcoinWalletStore.getState();
 
   // Local state
@@ -89,7 +91,10 @@ function App() {
       try {
         const connected = await init();
         if (connected) {
-          await initWallet();
+          const wallet = await initWallet();
+          if (wallet) {
+            await startNutzapMonitor(); // Start monitoring for incoming nutzaps
+          }
         }
       } catch (e) {
         console.warn("Wallet hydrate failed:", e);
@@ -97,8 +102,11 @@ function App() {
         if (alive) setHydrating(false);
       }
     })();
+
+    // Cleanup on unmount
     return () => {
       alive = false;
+      stopNutzapMonitor();
     };
   }, []);
 
@@ -179,7 +187,10 @@ function App() {
         setNsecInput("");
         // Re-initialize wallet connection
         await init();
-        await initWallet();
+        const wallet = await initWallet();
+        if (wallet) {
+          await startNutzapMonitor(); // Start monitoring after sign in
+        }
       } else {
         toast({
           title: "Sign in failed",
@@ -205,6 +216,7 @@ function App() {
     try {
       const wallet = await createNewWallet();
       if (wallet) {
+        await startNutzapMonitor(); // Start monitoring after wallet creation
         toast({
           title: "Wallet created!",
           description: "Your Bitcoin wallet is ready.",
@@ -472,9 +484,21 @@ function App() {
         {(isWalletReady || cashuWallet) && (
           <>
             {/* Deposit Section */}
+
             <Card w="100%">
               <CardBody>
                 <VStack spacing={4}>
+                  <Button
+                    colorScheme="purple"
+                    size="sm"
+                    onClick={async () => {
+                      const { debugRedeemNutzap } =
+                        useBitcoinWalletStore.getState();
+                      await debugRedeemNutzap();
+                    }}
+                  >
+                    redeem Nutzaps
+                  </Button>
                   <Button
                     colorScheme="green"
                     size="lg"

@@ -65,9 +65,10 @@
 
 import { create } from "zustand";
 import NDK, { NDKPrivateKeySigner, NDKEvent } from "@nostr-dev-kit/ndk";
-import { NDKCashuWallet } from "@nostr-dev-kit/ndk-wallet";
+import { NDKCashuWallet, NDKNutzapMonitor } from "@nostr-dev-kit/ndk-wallet";
 import { Buffer } from "buffer";
 import { bech32 } from "bech32";
+import * as secp256k1 from "@noble/secp256k1";
 
 // Polyfill Buffer for browser environments (Node.js Buffer API)
 if (typeof window !== "undefined") {
@@ -97,7 +98,7 @@ const DEFAULT_RELAYS = [
  * This is the npub of the Robots Building Education project.
  */
 const DEFAULT_RECEIVER =
-  "npub14vskcp90k6gwp6sxjs2jwwqpcmahg6wz3h5vzq0yn6crrsq0utts52axlt";
+  "npub15gndmsdm2x43q2rutc6zprcx4xfhth3kqh768ya3z2aplcrtc05sm9vkft";
 
 /**
  * Safely Extract Balance Value
@@ -123,6 +124,16 @@ function extractBalance(bal) {
   }
   const parsed = Number(bal);
   return isNaN(parsed) ? 0 : parsed;
+}
+
+function nostrPubkeyToCompressed(nostrPubkey) {
+  // Nostr pubkeys are just the x-coordinate (32 bytes / 64 hex chars)
+  // Compressed pubkeys need a prefix byte (02 or 03) indicating the y-coordinate parity
+  // We'll use 02 as the default prefix (even y-coordinate)
+  if (nostrPubkey.length === 64) {
+    return "02" + nostrPubkey;
+  }
+  return nostrPubkey;
 }
 
 /**
@@ -220,6 +231,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
   invoice: "", // Current Lightning invoice for deposits
   isCreatingWallet: false, // Loading state during wallet creation
   isWalletReady: false, // Whether wallet is initialized and ready
+  nutzapMonitor: null,
 
   // ============================================================
   // BASIC SETTERS
@@ -268,6 +280,209 @@ export const useBitcoinWalletStore = create((set, get) => ({
     const balance = await verifyBalanceWithMint(cashuWallet, DEFAULT_MINT);
     set({ walletBalance: balance });
     return balance;
+  },
+
+  /**
+   * Start Nutzap Monitor (Receive Incoming Payments)
+   *
+   * Monitors for incoming nutzaps (kind 9321) addressed to this user
+   * and automatically redeems them.
+   *
+   * The monitor:
+   * - Subscribes to kind 9321 events tagged with user's pubkey
+   * - Extracts P2PK-locked proofs from nutzap events
+   * - Swaps locked proofs for fresh proofs at the mint
+   * - Updates wallet balance after redemption
+   *
+   * @returns {NDKNutzapMonitor|null} The monitor instance or null on error
+   */
+  startNutzapMonitor: async () => {
+    const { ndkInstance, signer, cashuWallet, verifyAndUpdateBalance } = get();
+
+    console.log("[Wallet] Starting nutzap monitor...");
+
+    if (!ndkInstance || !signer || !cashuWallet) {
+      console.error("[Wallet] Cannot start monitor - wallet not ready");
+      return null;
+    }
+
+    // Prevent duplicate monitors
+    const { nutzapMonitor: existingMonitor } = get();
+    if (existingMonitor) {
+      console.log("[Wallet] Monitor already running, skipping...");
+      return existingMonitor;
+    }
+
+    try {
+      const user = await signer.user();
+      console.log("[Wallet] Monitoring for nutzaps to:", user.pubkey);
+
+      const monitor = new NDKNutzapMonitor(ndkInstance, user, {});
+      monitor.wallet = cashuWallet;
+
+      if (signer.privateKey) {
+        const privkeySigner = new NDKPrivateKeySigner(signer.privateKey);
+        await monitor.addPrivkey(privkeySigner);
+        console.log("[Wallet] Added privkey to monitor");
+      } else {
+        console.warn("[Wallet] No privkey available for monitor");
+      }
+
+      monitor.on("redeemed", async (nutzaps, amount) => {
+        console.log("[Wallet] ✅ Redeemed nutzaps!", amount, "sats");
+        await verifyAndUpdateBalance();
+      });
+
+      monitor.on("seen", (nutzap) => {
+        console.log("[Wallet] 👀 Incoming nutzap seen:", nutzap.id);
+      });
+
+      monitor.on("failed", (nutzap, error) => {
+        console.error("[Wallet] ❌ Failed to redeem nutzap:", error);
+      });
+
+      monitor.on("seen_in_unknown_mint", (nutzap) => {
+        console.warn("[Wallet] ⚠️ Nutzap from unknown mint:", nutzap.mint);
+      });
+
+      // Add this to track state changes
+      monitor.on("state_changed", (nutzapId, state) => {
+        console.log("[Wallet] 📊 Nutzap state changed:", nutzapId, state);
+      });
+
+      await monitor.start({});
+      console.log("[Wallet] ✅ Nutzap monitor started successfully");
+
+      set({ nutzapMonitor: monitor });
+
+      return monitor;
+    } catch (err) {
+      console.error("[Wallet] Error starting nutzap monitor:", err);
+      return null;
+    }
+  },
+
+  debugRedeemNutzap: async () => {
+    const { ndkInstance, signer, cashuWallet, verifyAndUpdateBalance } = get();
+
+    if (!ndkInstance || !signer || !cashuWallet) {
+      console.log("[Debug] Not ready");
+      return;
+    }
+
+    const user = await signer.user();
+
+    const events = await ndkInstance.fetchEvents({
+      kinds: [9321],
+      "#p": [user.pubkey],
+      limit: 5,
+    });
+
+    console.log("[Debug] Found nutzap events:", events.size);
+
+    const { NDKNutzap } = await import("@nostr-dev-kit/ndk");
+
+    for (const event of events) {
+      console.log("[Debug] Nutzap event:", event.id);
+
+      try {
+        const nutzap = await NDKNutzap.from(event);
+
+        if (!nutzap) {
+          console.log("[Debug] Could not parse nutzap");
+          continue;
+        }
+
+        console.log("[Debug] Parsed nutzap:", {
+          amount: nutzap.amount,
+          mint: nutzap.mint,
+          proofs: nutzap.proofs,
+        });
+
+        const cashuWalletInstance = await cashuWallet.getCashuWallet(
+          nutzap.mint
+        );
+        const proofStates = await cashuWalletInstance.checkProofsStates(
+          nutzap.proofs
+        );
+        console.log("[Debug] Proof states:", proofStates);
+
+        const hasUnspent = proofStates.some((s) => s.state === "UNSPENT");
+
+        if (!hasUnspent) {
+          console.log("[Debug] All proofs already spent, skipping");
+          continue;
+        }
+
+        console.log("[Debug] Found unspent proofs, attempting to redeem...");
+
+        const unspentProofs = nutzap.proofs.filter(
+          (_, i) => proofStates[i]?.state === "UNSPENT"
+        );
+
+        try {
+          let privkeyHex = signer.privateKey;
+
+          if (!privkeyHex) {
+            console.error("[Debug] No private key available for redemption");
+            continue;
+          }
+
+          if (privkeyHex instanceof Uint8Array) {
+            privkeyHex = Buffer.from(privkeyHex).toString("hex");
+          }
+
+          // The P2PK in the proof is the user's hex pubkey (32 bytes / 64 chars)
+          // But Cashu expects a 33-byte compressed pubkey with 02/03 prefix
+          // Let's add the "02" prefix to make it a compressed pubkey
+          const p2pkPubkey = nutzap.p2pk;
+          console.log("[Debug] P2PK pubkey from nutzap:", p2pkPubkey);
+          console.log("[Debug] P2PK pubkey length:", p2pkPubkey?.length);
+          console.log("[Debug] Privkey hex length:", privkeyHex.length);
+
+          // Try using getPublicKey from @noble/secp256k1 (should be a dependency of cashu-ts)
+          const secp = await import("@noble/secp256k1");
+          const pubkeyBytes = secp.getPublicKey(privkeyHex, true); // true = compressed
+          const pubkeyHex = Buffer.from(pubkeyBytes).toString("hex");
+
+          console.log("[Debug] Derived compressed pubkey:", pubkeyHex);
+          console.log("[Debug] Derived pubkey length:", pubkeyHex.length);
+
+          // Now use this properly formatted privkey
+          const amount = await cashuWallet.redeemNutzaps([nutzap], privkeyHex, {
+            mint: nutzap.mint,
+            proofs: unspentProofs,
+            cashuWallet: cashuWalletInstance,
+          });
+
+          console.log("[Debug] ✅ Redeemed amount:", amount);
+
+          await verifyAndUpdateBalance();
+          console.log("[Debug] ✅ Balance updated!");
+        } catch (redeemErr) {
+          console.error("[Debug] Error redeeming:", redeemErr);
+          console.error("[Debug] Error details:", redeemErr.message);
+        }
+      } catch (e) {
+        console.error("[Debug] Error processing nutzap:", e);
+      }
+    }
+  },
+
+  /**
+   * Stop Nutzap Monitor
+   *
+   * Stops monitoring for incoming nutzaps. Call when logging out
+   * or when the wallet is no longer needed.
+   */
+  stopNutzapMonitor: () => {
+    const { nutzapMonitor } = get();
+
+    if (nutzapMonitor) {
+      nutzapMonitor.stop();
+      set({ nutzapMonitor: null });
+      console.log("[Wallet] Nutzap monitor stopped");
+    }
   },
 
   // ============================================================
@@ -811,6 +1026,10 @@ export const useBitcoinWalletStore = create((set, get) => ({
 
       // Get recipient's P2PK pubkey for locking proofs
       const { p2pkPubkey } = await fetchUserPaymentInfo(recipientNpub);
+      const compressedPubkey = nostrPubkeyToCompressed(p2pkPubkey);
+
+      console.log("[Wallet] P2PK pubkey:", p2pkPubkey);
+      console.log("[Wallet] P2PK pubkey length:", p2pkPubkey?.length);
       console.log("[Wallet] Sending 1 sat to:", recipientNpub);
 
       const cashuWalletInstance = await freshWallet.getCashuWallet(
@@ -854,7 +1073,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
         amount,
         validProofs,
         {
-          pubkey: p2pkPubkey,
+          pubkey: compressedPubkey,
         }
       );
 
@@ -942,6 +1161,18 @@ export const useBitcoinWalletStore = create((set, get) => ({
    * recovered by logging in again with the same nsec.
    */
   resetState: () => {
+    const { cashuWallet, nutzapMonitor } = get();
+
+    // Clean up wallet listeners
+    if (cashuWallet) {
+      cashuWallet.removeAllListeners();
+    }
+
+    // Stop nutzap monitor
+    if (nutzapMonitor) {
+      nutzapMonitor.stop();
+    }
+
     set({
       isConnected: false,
       errorMessage: null,
@@ -950,6 +1181,7 @@ export const useBitcoinWalletStore = create((set, get) => ({
       ndkInstance: null,
       signer: null,
       cashuWallet: null,
+      nutzapMonitor: null,
       walletBalance: 0,
       proofs: [],
       invoice: "",
