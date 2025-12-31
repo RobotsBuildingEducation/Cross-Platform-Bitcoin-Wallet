@@ -98,7 +98,7 @@ const DEFAULT_RELAYS = [
  * This is the npub of the Robots Building Education project.
  */
 const DEFAULT_RECEIVER =
-  "npub15gndmsdm2x43q2rutc6zprcx4xfhth3kqh768ya3z2aplcrtc05sm9vkft";
+  "npub1hzfsw36qm03mhx6q72mryullal686n68ukgxg8xl3p4c0fudr8hqvc57kp";
 
 /**
  * Safely Extract Balance Value
